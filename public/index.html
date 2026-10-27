@@ -185,6 +185,26 @@ a { color: var(--accent); }
 .gitout { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); white-space: pre-wrap; max-height: 120px; overflow: auto; }
 .nochanges { padding: 30px 16px; text-align: center; color: var(--fg-3); font-size: 13.5px; }
 
+/* status line */
+.status { font-size: 13px; color: var(--fg-3); display: flex; align-items: center; gap: 8px; }
+.status .sp { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* review card */
+.review { border: 1px solid var(--accent); border-radius: 10px; background: var(--card); padding: 12px 14px; font-size: 13.5px; display: flex; flex-direction: column; gap: 10px; }
+.review .h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 500; }
+.review .h a { font-weight: 400; font-size: 12.5px; }
+.review textarea { font-size: 13.5px; min-height: 60px; }
+.review .cm { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--bg-2); }
+.review .cm .loc { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); }
+.review .cm .loc .x { margin-left: auto; color: var(--bad); font-size: 12px; }
+.review .cm textarea { min-height: 40px; }
+.review .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.review.posted { border-color: var(--ok); }
+.prlist { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow: auto; }
+.pr { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.pr .t { flex: 1; min-width: 0; }
+.pr .t b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pr .t small { color: var(--fg-3); font-size: 12px; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 60; max-width: 90vw; }
 .modal { position: fixed; inset: 0; background: rgba(20,18,12,.45); display: grid; place-items: center; z-index: 50; padding: 20px; }
 .modal .sheet { width: min(480px, 100%); background: var(--bg); border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow); padding: 20px 22px; }
@@ -223,6 +243,7 @@ a { color: var(--accent); }
       <span class="mini" id="costTotal" title="Estimated cost of this session"></span>
       <label class="pill model"><span class="k">model</span><select id="modelSel"><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option></select></label>
       <label class="pill effort"><span class="k">effort</span><select id="effortSel"><option value="">default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label>
+      <button class="btn" id="prBtn" title="Review an open pull request">Pull requests</button>
       <button class="btn" id="newSession" title="Start a fresh conversation (the agent forgets this chat)">New session</button>
       <button class="iconbtn" id="cpToggle" title="Changes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3v4a1 1 0 0 0 1 1h4M8 3h8l5 5v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 8v13h13"/></svg></button>
     </div>
@@ -277,12 +298,22 @@ a { color: var(--accent); }
     <p id="loginNote" style="margin-top:14px;font-size:13px"></p>
   </div>
 </div>
+<div class="modal" id="prModal" hidden>
+  <div class="sheet" style="width:min(640px,100%)">
+    <h2>Open pull requests</h2>
+    <p id="prNote">Pick one to review. The agent checks the branch out, reads the diff and the code, and drafts a review in your style. Nothing is posted until you click Post.</p>
+    <div class="prlist" id="prList"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn" type="button" id="prClose">Close</button></div>
+  </div>
+</div>
 <div class="modal" id="settingsModal" hidden>
   <div class="sheet">
     <h2>Settings</h2>
     <p>Your Anthropic API key from <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a>. Stored only in this browser's localStorage and sent with each run so it is billed to you.</p>
     <form id="settingsForm">
       <input id="keyInput" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+      <p style="margin:14px 0 6px"><b style="color:var(--fg)">Review style.</b> How the agent writes PR reviews posted under your name. Edit freely.</p>
+      <textarea id="styleInput" rows="6" style="font-size:13.5px"></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px">
         <a class="btn danger" href="/auth/logout" style="text-decoration:none">Sign out</a>
         <span style="flex:1"></span>
@@ -298,7 +329,8 @@ a { color: var(--accent); }
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let settings = Object.assign({ apiKey: "", model: "claude-opus-5-5", effort: "", theme: "", mode: "auto" }, store.get("ra.settings", {}));
+const DEFAULT_REVIEW_STYLE = "Short, clear, confident, natural, maintainer-like. Concise and direct, no filler. Human, not AI-sounding; professional, calm, collaborative. Facts, rationale, actionable points. Active voice, simple wording. Focus on correctness, maintainability, consistency, type safety. Avoid 'could', 'would', 'can you', 'I noticed', 'I investigated', overly polite phrases, em dashes and unnecessary bullet lists. Never cite commit hashes or branch names. Comment only on real problems: bugs, wrong behaviour, security, missing tests for new logic, breaking changes. No nits, no praise comments. Example: not 'I noticed this could potentially cause issues' but 'This can cause issues. Use X here instead.'";
+let settings = Object.assign({ apiKey: "", model: "claude-opus-5-5", effort: "", theme: "", mode: "auto", reviewStyle: DEFAULT_REVIEW_STYLE }, store.get("ra.settings", {}));
 let me = null;
 const saveSettings = () => store.set("ra.settings", settings);
 let sessions = store.get("ra.sessions", {});   // key -> { session_id, messages: [...], cost }
@@ -312,7 +344,8 @@ applyTheme();
 
 function toast(t) { const n = el("div", "toast", t); document.body.appendChild(n); setTimeout(() => n.remove(), 2200); }
 marked.setOptions({ gfm: true });
-const md = (t) => { try { return DOMPurify.sanitize(marked.parse(t)); } catch { return t; } };
+const stripReview = (t) => String(t || "").replace(/\`\`\`review[\s\S]*?\`\`\`\s*$/m, "").replace(/\`\`\`review[\s\S]*$/m, "");
+const md = (t) => { try { return DOMPurify.sanitize(marked.parse(stripReview(t))); } catch { return t; } };
 
 /* ---------- line diff (LCS) for inline Edit/Write cards ---------- */
 function lineDiff(a, b) {
@@ -379,10 +412,10 @@ async function api(path, opts = {}) {
   if (!r.ok) throw new Error(j.error || r.statusText);
   return j;
 }
-$("#settingsBtn").onclick = () => { $("#keyInput").value = settings.apiKey; $("#settingsModal").hidden = false; $("#keyInput").focus(); };
+$("#settingsBtn").onclick = () => { $("#keyInput").value = settings.apiKey; $("#styleInput").value = settings.reviewStyle || DEFAULT_REVIEW_STYLE; $("#settingsModal").hidden = false; $("#keyInput").focus(); };
 $("#settingsCancel").onclick = () => { $("#settingsModal").hidden = true; };
-$("#settingsForm").onsubmit = (e) => { e.preventDefault(); settings.apiKey = $("#keyInput").value.trim(); saveSettings(); $("#settingsModal").hidden = true; updateStatus(); toast(settings.apiKey ? "API key saved" : "API key removed"); };
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#settingsModal").hidden = true; });
+$("#settingsForm").onsubmit = (e) => { e.preventDefault(); settings.apiKey = $("#keyInput").value.trim(); settings.reviewStyle = $("#styleInput").value.trim() || DEFAULT_REVIEW_STYLE; saveSettings(); $("#settingsModal").hidden = true; updateStatus(); toast(settings.apiKey ? "API key saved" : "API key removed"); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("#settingsModal").hidden = true; $("#prModal").hidden = true; } });
 function updateStatus() {
   const txt = $("#statusText");
   if (!me) { txt.textContent = "Not signed in"; return; }
@@ -456,6 +489,7 @@ function itemNode(it) {
   if (it.kind === "thinking") return el("div", "think", it.text);
   if (it.kind === "todo") return todoNode(it.todos);
   if (it.kind === "permission") return permNode(it);
+  if (it.kind === "review") return reviewNode(it);
   if (it.kind === "tool") {
     const d = el("details", "tool " + (it.status || "ok")); d.dataset.id = it.id;
     const s = el("summary"); s.append(el("span", "ic", abbr(it.name)), el("span", "nm", it.name), el("span", "sm", it.summary || ""));
@@ -508,6 +542,37 @@ function changesNode(c) {
   if (c.commits?.length) d.appendChild(el("div", "commits", c.commits.join("\n")));
   return d;
 }
+function reviewNode(it) {
+  const d = el("div", "review" + (it.posted ? " posted" : "")); d.dataset.rid = it.pr.number;
+  const h = el("div", "h"); h.appendChild(el("span", null, (it.posted ? "Posted review for " : "Draft review for ") + "#" + it.pr.number + ": " + it.pr.title)); const a = el("a", null, it.posted && it.postedUrl ? "view on GitHub" : "open PR"); a.href = it.postedUrl || it.pr.url; a.target = "_blank"; a.rel = "noopener"; h.appendChild(a); d.appendChild(h);
+  const verdict = el("select"); [["approve", "Approve"], ["request_changes", "Request changes"], ["comment", "Comment only"]].forEach(([v, l]) => { const o = el("option", null, l); o.value = v; verdict.appendChild(o); }); verdict.value = it.verdict; verdict.className = "btn"; verdict.disabled = !!it.posted;
+  const summary = el("textarea"); summary.value = it.summary; summary.disabled = !!it.posted; summary.placeholder = "Review summary";
+  d.append(verdict, summary);
+  const list = el("div", null); list.style.display = "flex"; list.style.flexDirection = "column"; list.style.gap = "6px";
+  const rows = [];
+  (it.comments || []).forEach((c) => {
+    const cm = el("div", "cm"); const loc = el("div", "loc", c.path + (c.line ? ":" + c.line : "")); const ta = el("textarea"); ta.value = c.body; ta.disabled = !!it.posted;
+    if (!it.posted) { const x = el("button", "x", "remove"); x.onclick = () => { cm.remove(); rows.splice(rows.indexOf(row), 1); }; loc.appendChild(x); }
+    const row = { c, ta }; rows.push(row); cm.append(loc, ta); list.appendChild(cm);
+  });
+  if (!(it.comments || []).length) list.appendChild(el("div", null, "No inline comments."));
+  d.appendChild(list);
+  if (!it.posted) {
+    const r = el("div", "row");
+    const post = el("button", "btn primary", "Post review to GitHub"), copy = el("button", "btn", "Copy as text");
+    post.onclick = async () => {
+      const payload = { repo: active, number: it.pr.number, event: verdict.value, body: summary.value, comments: rows.map((x) => ({ path: x.c.path, line: x.c.line, body: x.ta.value })) };
+      if (!confirm(`Post this review on PR #${it.pr.number} as @${me.login}? This is public and cannot be undone here.`)) return;
+      post.disabled = true; post.textContent = "Posting…";
+      try { const res = await api("/api/github/review", { method: "POST", body: payload }); it.posted = true; it.postedUrl = res.url; it.verdict = verdict.value; it.summary = summary.value; it.comments = payload.comments; saveSessions(); d.replaceWith(reviewNode(it)); toast(`Posted: ${res.inline} inline comment${res.inline === 1 ? "" : "s"}${res.inBody ? ", " + res.inBody + " moved into the body" : ""}`); }
+      catch (e) { toast(e.message); post.disabled = false; post.textContent = "Post review to GitHub"; }
+    };
+    copy.onclick = () => { const t = [summary.value, ...rows.map((x) => `${x.c.path}${x.c.line ? ":" + x.c.line : ""}\n${x.ta.value}`)].join("\n\n"); navigator.clipboard?.writeText(t).then(() => toast("Copied")); };
+    r.append(post, copy, el("span", null, "Edit anything above before posting.")); d.appendChild(r);
+  }
+  return d;
+}
+function statusNode(text) { const d = el("div", "status"); d.append(el("span", "sp"), el("span", "t", text), el("span", "e", "")); return d; }
 function resultNode(r) {
   const d = el("div", "result" + (r.is_error ? " bad" : ""));
   if (r.is_error) d.appendChild(el("span", null, "Run ended with an error" + (r.errors?.length ? ": " + r.errors.join("; ") : "") + (r.subtype && r.subtype !== "success" ? " (" + r.subtype + ")" : "")));
@@ -524,15 +589,29 @@ function setRunningUI(on) {
   b.disabled = !active;
   for (const id of ["commitBtn", "pushBtn", "pullBtn", "discardBtn"]) $("#" + id).disabled = on;
 }
-async function send() {
-  const text = $("#input").value.trim(); if (!text || !active || running) return;
+async function send(pr) {
+  const typed = $("#input").value.trim(); if ((!typed && !pr) || !active || running) return;
   if (!settings.apiKey) { $("#settingsBtn").click(); return toast("Add your Anthropic API key first"); }
+  const text = pr ? `Review PR #${pr.number}: ${pr.title}` + (typed ? "\n\n" + typed : "") : typed;
   const s = sess(); s.messages.push({ role: "user", text }); saveSessions();
   $("#input").value = ""; autosize(); renderThread();
-  try { await api("/api/run", { method: "POST", key: true, body: { repo: active, prompt: text, sessionId: s.session_id, model: settings.model, effort: settings.effort, mode: settings.mode } }); }
+  try { await api("/api/run", { method: "POST", key: true, body: { repo: active, prompt: typed, sessionId: pr ? null : s.session_id, model: settings.model, effort: settings.effort, mode: pr ? "auto" : settings.mode, pr: pr ? pr.number : undefined, reviewStyle: settings.reviewStyle } }); }
   catch (e) { toast(e.message); s.messages.pop(); saveSessions(); renderThread(); return; }
   attach();
 }
+$("#prBtn").onclick = async () => {
+  if (!active) return toast("Pick a repository first");
+  const list = $("#prList"); list.innerHTML = ""; list.appendChild(el("div", null, "Loading…")); $("#prModal").hidden = false;
+  try {
+    const prs = await api(`/api/github/pulls?repo=${encodeURIComponent(active)}`); list.innerHTML = "";
+    if (!prs.length) list.appendChild(el("div", null, "No open pull requests."));
+    prs.forEach((p) => {
+      const row = el("div", "pr"); const t = el("div", "t"); t.appendChild(el("b", null, `#${p.number} ${p.title}`)); t.appendChild(el("small", null, `@${p.author} · ${p.head} → ${p.base}${p.draft ? " · draft" : ""}`)); row.appendChild(t);
+      const b = el("button", "btn primary sm", "Review"); b.onclick = () => { $("#prModal").hidden = true; send({ number: p.number, title: p.title }); }; row.appendChild(b); list.appendChild(row);
+    });
+  } catch (e) { list.innerHTML = ""; list.appendChild(el("div", null, e.message)); }
+};
+$("#prClose").onclick = () => { $("#prModal").hidden = true; };
 function attach() {
   if (es) es.close();
   setRunningUI(true);
@@ -541,7 +620,9 @@ function attach() {
   s.messages.push(msg);
   if (thread.querySelector(".empty")) thread.innerHTML = "";
   const node = agentNode(msg); thread.appendChild(node);
-  cur = { msg, body: node.querySelector(".body"), textNode: null, textBuf: "", thinkNode: null, thinkBuf: "" };
+  cur = { msg, body: node.querySelector(".body"), textNode: null, textBuf: "", thinkNode: null, thinkBuf: "", status: statusNode("Thinking…"), t0: Date.now(), tLast: Date.now() };
+  cur.body.appendChild(cur.status);
+  cur.timer = setInterval(() => { if (!cur || !cur.status) return; const s = Math.round((Date.now() - cur.tLast) / 1000); cur.status.querySelector(".e").textContent = s >= 2 ? s + "s" : ""; }, 1000);
   es = new EventSource(`/api/run/events?repo=${encodeURIComponent(active)}`);
   const slugAtStart = active;
   es.onmessage = (e) => {
@@ -551,17 +632,20 @@ function attach() {
     if (stick) scroller.scrollTop = scroller.scrollHeight;
   };
 }
+function setStatus(text) { if (!cur || !cur.status) return; cur.status.hidden = !text; if (text) { cur.status.querySelector(".t").textContent = text; cur.tLast = Date.now(); cur.body.appendChild(cur.status); } }
+function clearStatus() { if (cur?.timer) clearInterval(cur.timer); if (cur?.status) cur.status.remove(); if (cur) cur.status = null; }
 function handle(ev) {
   const s = sess();
   switch (ev.type) {
-    case "start": break;
+    case "start": setStatus(ev.pr ? "Reading PR #" + ev.pr.number + "…" : "Thinking…"); break;
     case "init": s.session_id = ev.session_id; break;
     case "thinking": {
+      setStatus("Thinking…");
       if (!cur.thinkNode) { cur.thinkBuf = ""; cur.thinkNode = el("div", "think"); cur.body.appendChild(cur.thinkNode); cur.msg.items.push({ kind: "thinking", text: "" }); }
       cur.thinkBuf += ev.delta; const t = cur.thinkBuf.slice(-600); cur.thinkNode.textContent = t; cur.msg.items[cur.msg.items.length - 1].text = t; break;
     }
     case "text": {
-      cur.thinkNode = null;
+      cur.thinkNode = null; setStatus("");
       if (!cur.textNode) { cur.textBuf = ""; cur.textNode = el("div", "md cursor"); cur.body.appendChild(cur.textNode); cur.msg.items.push({ kind: "text", text: "" }); }
       cur.textBuf += ev.delta; cur.textNode.innerHTML = md(cur.textBuf); cur.msg.items[cur.msg.items.length - 1].text = cur.textBuf; break;
     }
@@ -570,16 +654,19 @@ function handle(ev) {
       cur.textNode = null; cur.thinkNode = null;
       if (ev.name === "TodoWrite" && ev.todos) { const prev = cur.msg.items.findIndex((x) => x.kind === "todo"); const it = { kind: "todo", todos: ev.todos }; if (prev >= 0) cur.msg.items[prev] = it; else cur.msg.items.push(it); appendItem(cur.body, it); break; }
       const it = { kind: "tool", id: ev.id, name: ev.name, summary: ev.summary, input: ev.input, previous: ev.previous, parent: ev.parent, status: "running" };
-      cur.msg.items.push(it); appendItem(cur.body, it); break;
+      cur.msg.items.push(it); appendItem(cur.body, it); setStatus({ Bash: "Running command…", Read: "Reading files…", Grep: "Searching…", Glob: "Searching…", Edit: "Editing…", Write: "Writing…", Task: "Running subagent…", WebFetch: "Fetching…", WebSearch: "Searching the web…" }[ev.name] || "Working…"); break;
     }
     case "tool_result": {
       const it = cur.msg.items.find((x) => x.kind === "tool" && x.id === ev.id); if (!it) break;
       it.status = ev.is_error ? (/declined|Blocked/.test(ev.output || "") ? "denied" : "err") : "ok"; it.output = ev.output;
       const d = cur.body.querySelector(`details[data-id="${ev.id}"]`); if (d) { d.className = "tool " + it.status; if (ev.output) d.appendChild(outputPre(it)); if (it.status === "err") d.open = true; }
+      if (!cur.msg.items.some((x) => x.kind === "tool" && x.status === "running")) setStatus("Thinking…");
       break;
     }
-    case "permission": { const it = { kind: "permission", id: ev.id, tool: ev.tool, summary: ev.summary, input: ev.input, answered: false }; cur.msg.items.push(it); cur.body.appendChild(itemNode(it)); break; }
+    case "permission": { const it = { kind: "permission", id: ev.id, tool: ev.tool, summary: ev.summary, input: ev.input, answered: false }; cur.msg.items.push(it); cur.body.appendChild(itemNode(it)); setStatus("Waiting for your approval"); break; }
     case "permission_result": { const it = cur.msg.items.find((x) => x.kind === "permission" && x.id === ev.id); if (!it) break; it.answered = true; it.allow = ev.allow; const n = cur.body.querySelector(`.perm[data-pid="${ev.id}"]`); if (n) n.replaceWith(itemNode(it)); break; }
+    case "review": { const it = { kind: "review", pr: ev.pr, verdict: ev.verdict, summary: ev.summary, comments: ev.comments, posted: false }; cur.msg.items.push(it); cur.body.appendChild(itemNode(it)); break; }
+    case "review_missing": { cur.body.appendChild(el("div", "result bad", "The agent did not produce a structured review block. Read its summary above, or run the review again.")); break; }
     case "changes": { if (!(ev.files || []).length && !(ev.commits || []).length) break; cur.msg.changes = { files: ev.files || [], commits: ev.commits || [] }; cur.body.appendChild(changesNode(cur.msg.changes)); break; }
     case "result": {
       s.session_id = ev.session_id || s.session_id;
@@ -590,6 +677,7 @@ function handle(ev) {
     }
     case "error": if (cur.msg.result) break; cur.msg.result = { is_error: true, errors: [ev.message] }; cur.body.appendChild(resultNode(cur.msg.result)); break;
     case "done": {
+      clearStatus();
       if (cur.textNode) cur.textNode.classList.remove("cursor");
       if (es) { es.close(); es = null; }
       setRunningUI(false);
@@ -600,8 +688,8 @@ function handle(ev) {
   saveSessions();
 }
 async function stop() { try { await api("/api/run/stop", { method: "POST", body: { repo: active } }); } catch (e) { toast(e.message); } }
-$("#sendBtn").onclick = () => (running ? stop() : send());
-$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!running) send(); } });
+$("#sendBtn").onclick = () => (running ? stop() : send(null));
+$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!running) send(null); } });
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }
 $("#input").addEventListener("input", autosize);
 $("#newSession").onclick = () => { if (!active) return; if (running) return toast("Stop the run first"); sessions[sessKey()] = { session_id: null, messages: [], cost: 0 }; saveSessions(); renderThread(); updateCost(); toast("New session"); };

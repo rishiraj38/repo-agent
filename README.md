@@ -61,6 +61,12 @@ Paid anywhere: attach a disk at `/data` (the Dockerfile uses `/data/workspaces`)
 - At the end of a run: a summary of files changed with +/− counts and any commits the agent made, plus turns, time and estimated cost. The top bar keeps a running session total.
 - The **Changes** panel has two views. *This run* shows everything since the run started, including commits the agent made, so nothing disappears when the agent commits. *Uncommitted* shows the working tree against HEAD. Both render per-file collapsible diffs; click a file in the run summary to jump to it.
 
+## Pull request reviews
+
+Click **Pull requests** in the top bar, pick an open PR, and the agent checks the branch out, reads the diff and the surrounding code, and drafts a review: a verdict (approve, request changes, comment), a summary, and inline comments on specific lines. Nothing is posted automatically. The draft appears as an editable card; change the verdict, edit or remove comments, then click **Post review to GitHub** and it is submitted as a real review under your account. Comments on lines outside the diff are moved into the review body, since GitHub rejects them inline.
+
+The tone comes from **Review style** in Settings, which the agent must follow for every sentence. The default is a terse maintainer voice: direct, no filler, no hedging words, no praise, comments only on real problems. Edit it to match how you write.
+
 ## Env vars
 
 | Var | Required | What |

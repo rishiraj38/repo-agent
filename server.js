@@ -138,17 +138,35 @@ function summarizeTool(name, input) {
 const textOf = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.map((b) => (b.type === "text" ? b.text : "")).join("") : "");
 const insideDir = (p, dir) => { if (!p) return true; const abs = path.resolve(dir, String(p)); return abs === dir || abs.startsWith(dir + path.sep); };
 
-async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, mode }) {
+async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, mode, pr, reviewStyle }) {
   const dir = safeRepo(user, slug); if (!dir) throw new Error("Unknown repo");
   const key = runKey(user, slug);
   if (runs.has(key)) throw new Error("A run is already in progress for this repo");
   if ([...runs.keys()].filter((k) => k.startsWith(user.id + "/")).length >= MAX_RUNS_PER_USER) throw new Error(`You already have ${MAX_RUNS_PER_USER} runs going. Wait for one to finish.`);
   const controller = new AbortController();
+  // PR review: check the PR branch out so the agent reads the real code, then restore the branch afterwards.
+  let prInfo = null, prevBranch = null, reviewAppend = "";
+  if (pr) {
+    const n = Number(pr); if (!Number.isInteger(n) || n <= 0) throw new Error("Bad PR number");
+    const p = await gh(user.token, `https://api.github.com/repos/${slug}/pulls/${n}`);
+    if ((await git(user, dir, "status", "--porcelain")).out.trim()) throw new Error("The working tree has uncommitted changes. Commit or discard them before reviewing a PR.");
+    prevBranch = (await git(user, dir, "rev-parse", "--abbrev-ref", "HEAD")).out.trim();
+    await git(user, dir, "fetch", "--unshallow").catch(() => {});
+    const f = await git(user, dir, "fetch", "origin", p.base.ref, `+refs/pull/${n}/head:refs/heads/pr-${n}`);
+    if (f.code !== 0) throw new Error("Could not fetch the PR: " + f.err.split("\n").filter(Boolean).pop());
+    const co = await git(user, dir, "checkout", "-q", `pr-${n}`); if (co.code !== 0) throw new Error("Checkout failed: " + co.err.trim());
+    await git(user, dir, "reset", "-q", "--hard", `refs/heads/pr-${n}`);
+    prInfo = { number: n, title: p.title, author: p.user?.login, base: p.base.ref, head_sha: p.head.sha, url: p.html_url, body: p.body || "" };
+    const style = String(reviewStyle || "").trim() || DEFAULT_REVIEW_STYLE;
+    reviewAppend = `\n\n## Pull request review mode\nYou are reviewing PR #${n} "${p.title}" by @${prInfo.author} into ${p.base.ref}. The PR branch is checked out. See the PR's changes with \`git diff origin/${p.base.ref}...HEAD\` and \`git log origin/${p.base.ref}..HEAD\`. Read surrounding code where needed. Run the tests or a build only if the project makes it cheap. Do not modify, commit or push anything.\n\nReview style the maintainer wants, follow it exactly for every sentence you write:\n${style}\n\nWhen done, write a short review summary in that style, then end your reply with exactly one fenced block in this form and nothing after it:\n\`\`\`review\n{"verdict":"approve|request_changes|comment","summary":"<the summary, in the maintainer style>","comments":[{"path":"relative/file.js","line":42,"body":"<comment in the maintainer style>"}]}\n\`\`\`\nLine numbers are new-file (right side) line numbers and must be lines that appear in the diff. Only comment where there is a real problem. If there are none, return an empty comments array and verdict "approve".`;
+    prompt = `Review pull request #${n}: ${p.title}\n\nPR description:\n${(p.body || "(none)").slice(0, 6000)}\n\n${String(prompt || "").trim()}`.trim();
+  }
   const base = (await git(user, dir, "rev-parse", "HEAD")).out.trim();
   const r = { controller, clients: new Set(), events: [], startedAt: Date.now(), mode: mode === "ask" ? "ask" : "auto", pending: new Map(), base };
   runs.set(key, r); runBase.set(key, base);
   const uroot = userRoot(user);
-  broadcast(r, { type: "start", base, mode: r.mode });
+  r.pr = prInfo; r.prevBranch = prevBranch;
+  broadcast(r, { type: "start", base, mode: r.mode, pr: prInfo ? { number: prInfo.number, title: prInfo.title, url: prInfo.url } : null });
 
   (async () => {
     try {
@@ -169,7 +187,7 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, 
           env: process.env.DEV_USE_LOCAL_LOGIN === "1" ? { ...process.env, ...gitEnv(user) } : { ...gitEnv(user), ANTHROPIC_API_KEY: apiKey, CLAUDE_CONFIG_DIR: path.join(uroot, ".claude") },
           systemPrompt: {
             type: "preset", preset: "claude_code",
-            append: `You are working inside the git repository ${slug} for GitHub user ${user.login}, already cloned at ${dir}. Stay inside this directory. The user talks to you from a web UI and cannot see your tool calls, only your final message, so finish with a short summary of what you changed. Git is authenticated as the user: commit and push with ordinary git commands when asked, with clear commit messages. Never force-push, never rewrite published history, never delete branches, and never print environment variables or tokens.`,
+            append: `You are working inside the git repository ${slug} for GitHub user ${user.login}, already cloned at ${dir}. Stay inside this directory. The user talks to you from a web UI and cannot see your tool calls, only your final message, so finish with a short summary of what you changed. Git is authenticated as the user: commit and push with ordinary git commands when asked, with clear commit messages. Never force-push, never rewrite published history, never delete branches, and never print environment variables or tokens.` + reviewAppend,
           },
           canUseTool: async (toolName, input) => {
             const deny = (message) => ({ behavior: "deny", message });
@@ -215,6 +233,7 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, 
         } else if (m.type === "user") {
           for (const b of (Array.isArray(m.message.content) ? m.message.content : [])) if (b.type === "tool_result") { const t = textOf(b.content); broadcast(r, { type: "tool_result", id: b.tool_use_id, is_error: !!b.is_error, output: t.length > 4000 ? t.slice(0, 4000) + `\n… (${t.length - 4000} more chars)` : t }); }
         } else if (m.type === "result") {
+          if (prInfo && m.subtype === "success") { const rv = extractReview(m.result); if (rv) broadcast(r, { type: "review", ...rv, pr: prInfo }); else broadcast(r, { type: "review_missing" }); }
           broadcast(r, { type: "result", subtype: m.subtype, is_error: m.is_error, session_id: m.session_id, cost: m.total_cost_usd, turns: m.num_turns, duration_ms: m.duration_ms, errors: m.errors || [], text: m.subtype === "success" ? m.result : "" });
         }
       }
@@ -223,7 +242,9 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, 
     } finally {
       runs.delete(key);
       for (const resolve of r.pending.values()) resolve({ allow: false, reason: "Run ended." });
-      try { broadcast(r, { type: "changes", base, ...(await changesSince(user, dir, base)) }); } catch {}
+      if (prevBranch && !(await git(user, dir, "status", "--porcelain")).out.trim()) await git(user, dir, "checkout", "-q", prevBranch).catch(() => {});
+      if (prInfo) runBase.delete(key); // a review changes nothing; don't show the PR branch vs main as "this run"
+      else try { broadcast(r, { type: "changes", base, ...(await changesSince(user, dir, base)) }); } catch {}
       broadcast(r, { type: "done", repo: await repoInfo(user, slug).catch(() => null) });
       for (const c of r.clients) c.end();
       lastRuns.set(key, r.events);
@@ -233,11 +254,29 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, 
 }
 
 /* ---------- github api ---------- */
-async function gh(token, url) {
-  const r = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "repo-agent" } });
-  if (!r.ok) throw new Error(`GitHub ${r.status}`);
-  return r.json();
+async function gh(token, url, body) {
+  const r = await fetch(url, { method: body ? "POST" : "GET", headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "repo-agent", ...(body ? { "content-type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`GitHub ${r.status}: ${j.message || ""}${j.errors ? " " + JSON.stringify(j.errors).slice(0, 300) : ""}`);
+  return j;
 }
+// Right-side line numbers that appear in a unified patch (the only lines GitHub accepts inline comments on).
+function patchLines(patch) {
+  const lines = new Set(); if (!patch) return lines;
+  let n = 0;
+  for (const l of patch.split("\n")) {
+    const h = l.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (h) { n = +h[1]; continue; }
+    if (l.startsWith("+")) { lines.add(n); n++; } else if (l.startsWith("-")) { /* old side */ } else if (!l.startsWith("\\")) { lines.add(n); n++; }
+  }
+  return lines;
+}
+function extractReview(text) {
+  const m = String(text || "").match(/```review\s*([\s\S]*?)```/);
+  if (!m) return null;
+  try { const j = JSON.parse(m[1]); return { verdict: ["approve", "request_changes", "comment"].includes(j.verdict) ? j.verdict : "comment", summary: String(j.summary || ""), comments: Array.isArray(j.comments) ? j.comments.filter((c) => c && c.path && c.body).map((c) => ({ path: String(c.path), line: Number(c.line) || null, body: String(c.body) })) : [] }; } catch { return null; }
+}
+const DEFAULT_REVIEW_STYLE = "Short, clear, confident, natural, maintainer-like. Concise and direct, no filler. Human, not AI-sounding; professional, calm, collaborative. Facts, rationale, actionable points. Active voice, simple wording. Focus on correctness, maintainability, consistency, type safety. Avoid 'could', 'would', 'can you', 'I noticed', 'I investigated', overly polite phrases, em dashes and unnecessary bullet lists. Never cite commit hashes or branch names. Comment only on real problems: bugs, wrong behaviour, security, missing tests for new logic, breaking changes. No nits, no praise comments. Example: not 'I noticed this could potentially cause issues' but 'This can cause issues. Use X here instead.'";
 
 /* ---------- http ---------- */
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
@@ -284,6 +323,25 @@ http.createServer(async (req, res) => {
         return json(res, 200, list.map((r) => ({ slug: r.full_name, private: r.private, pushed: r.pushed_at })));
       }
 
+      if (p === "/api/github/pulls") {
+        const slug = url.searchParams.get("repo"); if (!safeRepo(user, slug)) return json(res, 404, { error: "Unknown repo" });
+        const list = await gh(user.token, `https://api.github.com/repos/${slug}/pulls?state=open&per_page=30&sort=updated&direction=desc`);
+        return json(res, 200, list.map((p) => ({ number: p.number, title: p.title, author: p.user?.login, base: p.base?.ref, head: p.head?.ref, updated: p.updated_at, url: p.html_url, draft: !!p.draft })));
+      }
+      if (p === "/api/github/review" && req.method === "POST") {
+        const { repo, number, event, body, comments } = await readBody(req); if (!safeRepo(user, repo)) return json(res, 404, { error: "Unknown repo" });
+        const n = Number(number); if (!Number.isInteger(n)) return json(res, 400, { error: "Bad PR number" });
+        const ev = { approve: "APPROVE", request_changes: "REQUEST_CHANGES", comment: "COMMENT" }[event] || "COMMENT";
+        const pull = await gh(user.token, `https://api.github.com/repos/${repo}/pulls/${n}`);
+        const files = await gh(user.token, `https://api.github.com/repos/${repo}/pulls/${n}/files?per_page=100`);
+        const valid = new Map(files.map((f) => [f.filename, patchLines(f.patch)]));
+        const inline = [], leftovers = [];
+        for (const c of comments || []) { if (!c?.path || !c?.body) continue; const ok = c.line && valid.get(c.path)?.has(Number(c.line)); if (ok) inline.push({ path: c.path, line: Number(c.line), side: "RIGHT", body: String(c.body) }); else leftovers.push(`${c.path}${c.line ? ":" + c.line : ""}: ${c.body}`); }
+        let text = String(body || "").trim(); if (leftovers.length) text += (text ? "\n\n" : "") + leftovers.join("\n\n");
+        if (!text && !inline.length) return json(res, 400, { error: "Nothing to post" });
+        const review = await gh(user.token, `https://api.github.com/repos/${repo}/pulls/${n}/reviews`, { commit_id: pull.head.sha, event: ev, body: text, comments: inline });
+        return json(res, 200, { ok: true, url: review.html_url, inline: inline.length, inBody: leftovers.length });
+      }
       if (p === "/api/repos" && req.method === "GET") return json(res, 200, await listRepos(user));
       if (p === "/api/repos" && req.method === "POST") {
         const { url: u } = await readBody(req);
@@ -305,7 +363,7 @@ http.createServer(async (req, res) => {
 
       if (p === "/api/run" && req.method === "POST") {
         const body = await readBody(req);
-        if (!body.prompt?.trim()) return json(res, 400, { error: "Empty prompt" });
+        if (!body.prompt?.trim() && !body.pr) return json(res, 400, { error: "Empty prompt" });
         const apiKey = String(req.headers["x-anthropic-key"] || "").trim();
         if (!/^sk-ant-/.test(apiKey)) return json(res, 400, { error: "Add your Anthropic API key in Settings first" });
         try { await startRun(user, body.repo, { ...body, apiKey }); } catch (e) { return json(res, 409, { error: e.message }); }
