@@ -11,15 +11,16 @@
 <style>
 :root {
   --bg: #faf9f5; --bg-2: #f3f1ea; --bg-3: #e9e6dc; --fg: #2a2a26; --fg-2: #6b6a62; --fg-3: #9c9a90; --line: #e2dfd4;
-  --accent: #d97757; --accent-ink: #fff; --card: #fff; --ok: #3a8f5c; --bad: #c0392b; --add: #e6f4ea; --add-fg: #1e7b3a; --del: #fdecea; --del-fg: #b3261e;
+  --accent: #d97757; --accent-ink: #fff; --card: #fff; --ok: #3a8f5c; --bad: #c0392b; --warn: #b7791f;
+  --add: #e6f4ea; --add-fg: #1e7b3a; --del: #fdecea; --del-fg: #b3261e; --hunk: #eef1f8; --hunk-fg: #4a5a8a;
   --font-display: "Lora", Georgia, serif; --font-body: "Source Sans 3", -apple-system, "Segoe UI", Roboto, sans-serif; --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.05);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #1f1e1b; --bg-2: #272622; --bg-3: #33322c; --fg: #ebe8df; --fg-2: #a9a69b; --fg-3: #77756b; --line: #3a3933; --card: #262520;
-  --add: #16301f; --add-fg: #7ed49a; --del: #3a1c1a; --del-fg: #f2a097; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
+  --add: #16301f; --add-fg: #7ed49a; --del: #3a1c1a; --del-fg: #f2a097; --hunk: #22283a; --hunk-fg: #9fb0e0; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
 } }
-:root[data-theme="dark"] { --bg: #1f1e1b; --bg-2: #272622; --bg-3: #33322c; --fg: #ebe8df; --fg-2: #a9a69b; --fg-3: #77756b; --line: #3a3933; --card: #262520; --add: #16301f; --add-fg: #7ed49a; --del: #3a1c1a; --del-fg: #f2a097; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25); }
+:root[data-theme="dark"] { --bg: #1f1e1b; --bg-2: #272622; --bg-3: #33322c; --fg: #ebe8df; --fg-2: #a9a69b; --fg-3: #77756b; --line: #3a3933; --card: #262520; --add: #16301f; --add-fg: #7ed49a; --del: #3a1c1a; --del-fg: #f2a097; --hunk: #22283a; --hunk-fg: #9fb0e0; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25); }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15.5px; line-height: 1.5; overflow: hidden; }
@@ -30,9 +31,10 @@ input, textarea { background: var(--card); border: 1px solid var(--line); border
 input:focus, textarea:focus { border-color: var(--fg-3); }
 [hidden] { display: none !important; }
 code, pre { font-family: var(--font-mono); }
+a { color: var(--accent); }
 
 #app { display: grid; grid-template-columns: 260px minmax(0, 1fr) var(--cp, 0px); grid-template-rows: minmax(0, 1fr); height: 100%; transition: grid-template-columns .2s; }
-#app.cp-open { --cp: min(46%, 640px); }
+#app.cp-open { --cp: min(46%, 680px); }
 #app.sb-closed { grid-template-columns: 0 minmax(0, 1fr) var(--cp, 0px); }
 
 /* sidebar */
@@ -48,17 +50,17 @@ code, pre { font-family: var(--font-mono); }
 .addrepo button { flex: none; width: 34px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
 .label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); padding: 8px 14px 4px; }
 .repolist { flex: 1; overflow-y: auto; padding: 0 8px; }
-.repo { display: flex; align-items: center; gap: 8px; padding: 8px 8px; border-radius: 8px; color: var(--fg-2); width: 100%; text-align: left; }
+.repo { display: flex; align-items: center; gap: 8px; padding: 8px 8px; border-radius: 8px; color: var(--fg-2); width: 100%; text-align: left; cursor: pointer; }
 .repo:hover, .repo.active { background: var(--bg-3); color: var(--fg); }
 .repo .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14.5px; }
 .repo .n small { display: block; color: var(--fg-3); font-size: 12px; }
 .repo .badge { font-size: 11px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--fg-2); flex: none; }
 .repo .badge.dirty { color: var(--accent); border-color: var(--accent); }
 .repo .spin { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1s infinite; flex: none; }
+.repo .del { opacity: 0; width: 26px; height: 26px; }
+.repo:hover .del { opacity: 1; }
 @keyframes pulse { 50% { opacity: .3; } }
 #sidebar .bottom { border-top: 1px solid var(--line); padding: 10px 14px; font-size: 12.5px; color: var(--fg-2); display: flex; align-items: center; gap: 8px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-3); flex: none; }
-.dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
 
 /* main */
 #main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
@@ -71,12 +73,14 @@ code, pre { font-family: var(--font-mono); }
 .btn { height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); font-size: 13.5px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .btn:hover { background: var(--bg-3); }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn.ok { background: var(--ok); color: #fff; border-color: transparent; }
 .btn.danger { color: var(--bad); }
+.btn.sm { height: 26px; padding: 0 9px; font-size: 12.5px; border-radius: 7px; }
 #scroll { flex: 1; min-height: 0; overflow-y: auto; }
-#thread { max-width: 860px; margin: 0 auto; padding: 22px 20px 30px; display: flex; flex-direction: column; gap: 14px; }
+#thread { max-width: 880px; margin: 0 auto; padding: 22px 20px 30px; display: flex; flex-direction: column; gap: 14px; }
 .empty { text-align: center; color: var(--fg-2); padding: 60px 20px; }
 .empty h2 { font-family: var(--font-display); font-weight: 500; font-size: 24px; margin: 0 0 8px; color: var(--fg); }
-.empty p { margin: 6px auto; max-width: 520px; }
+.empty p { margin: 6px auto; max-width: 540px; }
 .msg.user { display: flex; justify-content: flex-end; }
 .msg.user .body { background: var(--bg-3); border-radius: 16px 16px 4px 16px; padding: 9px 14px; max-width: 85%; white-space: pre-wrap; word-wrap: break-word; }
 .msg.agent { display: flex; gap: 10px; align-items: flex-start; }
@@ -86,48 +90,104 @@ code, pre { font-family: var(--font-mono); }
 .md pre { background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; overflow-x: auto; font-size: 13px; }
 .md code { background: var(--bg-3); padding: 1px 5px; border-radius: 4px; font-size: .9em; } .md pre code { background: none; padding: 0; }
 .md ul, .md ol { margin: 0 0 .7em; padding-left: 22px; }
+.md h1, .md h2, .md h3 { font-family: var(--font-display); font-weight: 500; margin: .8em 0 .4em; font-size: 1.15em; }
+
+/* tool cards */
 .tool { border: 1px solid var(--line); border-radius: 9px; background: var(--card); font-size: 13.5px; overflow: hidden; }
-.tool summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; color: var(--fg-2); }
-.tool summary::-webkit-details-marker { display: none; }
-.tool .ic { width: 20px; height: 20px; border-radius: 5px; background: var(--bg-3); display: grid; place-items: center; flex: none; font-size: 10.5px; font-weight: 600; color: var(--fg-2); }
+.tool > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; color: var(--fg-2); }
+.tool > summary::-webkit-details-marker { display: none; }
+.tool .ic { width: 20px; height: 20px; border-radius: 5px; background: var(--bg-3); display: grid; place-items: center; flex: none; font-size: 10.5px; font-weight: 600; color: var(--fg-2); font-family: var(--font-mono); }
 .tool .nm { font-weight: 500; color: var(--fg); flex: none; }
 .tool .sm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; }
+.tool .cnt { flex: none; font-family: var(--font-mono); font-size: 11.5px; }
+.tool .cnt .a { color: var(--add-fg); } .tool .cnt .d { color: var(--del-fg); margin-left: 4px; }
 .tool .st { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--fg-3); }
 .tool.running .st { background: var(--accent); animation: pulse 1s infinite; }
-.tool.ok .st { background: var(--ok); } .tool.err .st { background: var(--bad); }
-.tool pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--bg-2); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; font-size: 12.5px; line-height: 1.45; }
-.tool pre.edit .o { background: var(--del); color: var(--del-fg); display: block; } .tool pre.edit .n { background: var(--add); color: var(--add-fg); display: block; }
+.tool.ok .st { background: var(--ok); } .tool.err .st { background: var(--bad); } .tool.denied .st { background: var(--warn); }
+.tool pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--bg-2); white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; font-size: 12.5px; line-height: 1.45; }
+.tool .children { border-top: 1px solid var(--line); padding: 8px 10px 8px 22px; display: flex; flex-direction: column; gap: 6px; background: var(--bg-2); }
+.tool .children:empty { display: none; }
 .think { font-size: 13px; color: var(--fg-3); font-style: italic; white-space: pre-wrap; max-height: 120px; overflow: hidden; }
 .result { font-size: 12.5px; color: var(--fg-3); display: flex; gap: 12px; flex-wrap: wrap; }
 .result.bad { color: var(--bad); }
 .cursor::after { content: ""; display: inline-block; width: 7px; height: 1em; background: var(--fg-3); vertical-align: -2px; margin-left: 2px; animation: pulse .9s steps(2) infinite; }
 
+/* inline diffs */
+.udiff { border-top: 1px solid var(--line); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; max-height: 420px; overflow: auto; white-space: pre; }
+.udiff .ln { display: flex; }
+.udiff .ln .g { flex: none; width: 36px; text-align: right; padding-right: 8px; color: var(--fg-3); user-select: none; opacity: .7; }
+.udiff .ln .t { flex: 1; padding: 0 10px 0 4px; }
+.udiff .a { background: var(--add); color: var(--add-fg); } .udiff .d { background: var(--del); color: var(--del-fg); } .udiff .h { background: var(--hunk); color: var(--hunk-fg); padding: 1px 10px; } .udiff .c { color: var(--fg-2); }
+.udiff .skip { color: var(--fg-3); padding: 2px 10px; font-style: italic; }
+
+/* todo card */
+.todo { border: 1px solid var(--line); border-radius: 9px; background: var(--card); padding: 8px 12px; font-size: 13.5px; }
+.todo .h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); margin-bottom: 4px; }
+.todo .it { display: flex; gap: 8px; align-items: flex-start; padding: 2px 0; }
+.todo .it .box { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--fg-3); flex: none; margin-top: 4px; display: grid; place-items: center; font-size: 10px; }
+.todo .it.completed .box { background: var(--ok); border-color: var(--ok); color: #fff; } .todo .it.completed { color: var(--fg-3); text-decoration: line-through; }
+.todo .it.in_progress .box { border-color: var(--accent); } .todo .it.in_progress { color: var(--fg); font-weight: 500; }
+
+/* permission card */
+.perm { border: 1px solid var(--warn); border-radius: 9px; background: var(--card); padding: 10px 12px; font-size: 13.5px; display: flex; flex-direction: column; gap: 8px; }
+.perm .q { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.perm .q b { color: var(--warn); }
+.perm .cmd { font-family: var(--font-mono); font-size: 12.5px; background: var(--bg-2); padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+.perm .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.perm.answered { opacity: .6; border-color: var(--line); }
+
+/* run summary */
+.changes { border: 1px solid var(--line); border-radius: 9px; background: var(--card); padding: 10px 12px; font-size: 13.5px; }
+.changes .h { font-weight: 500; margin-bottom: 4px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.changes .h .cnt { font-family: var(--font-mono); font-size: 12px; }
+.changes .f { display: flex; gap: 8px; align-items: center; font-family: var(--font-mono); font-size: 12.5px; padding: 2px 0; cursor: pointer; color: var(--fg-2); width: 100%; text-align: left; }
+.changes .f:hover { color: var(--fg); }
+.changes .f .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changes .f .a { color: var(--add-fg); } .changes .f .d { color: var(--del-fg); }
+.changes .commits { margin-top: 6px; font-family: var(--font-mono); font-size: 12px; color: var(--fg-3); white-space: pre-wrap; }
+
 #composer { flex: none; padding: 10px 20px 14px; }
-#composer .box { max-width: 860px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 8px; box-shadow: var(--shadow); }
+#composer .box { max-width: 880px; margin: 0 auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 8px; box-shadow: var(--shadow); }
 #composer textarea { border: 0; background: transparent; resize: none; max-height: 220px; min-height: 26px; padding: 4px 6px; line-height: 1.5; }
-#composer .row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+#composer .row { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 #composer .row .sp { flex: 1; }
 #composer .hint { font-size: 12px; color: var(--fg-3); }
+.mini { font-size: 12.5px; color: var(--fg-2); display: inline-flex; align-items: center; gap: 4px; }
+.mini select { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; font-size: 12.5px; }
 .send { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
 .send svg { width: 18px; height: 18px; }
 .send.stop { background: var(--fg); color: var(--bg); }
 
 /* changes panel */
 #changes { border-left: 1px solid var(--line); background: var(--bg-2); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-#changes .head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--bg); }
-#changes .head .t { flex: 1; font-weight: 500; }
+#changes .head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--bg); }
+#changes .head .t { font-weight: 500; }
+.tabs { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.tabs button { padding: 4px 10px; font-size: 13px; color: var(--fg-2); }
+.tabs button.on { background: var(--bg-3); color: var(--fg); }
 #changes .body { flex: 1; min-height: 0; overflow: auto; }
 #changes .foot { border-top: 1px solid var(--line); padding: 10px 12px; background: var(--bg); display: flex; flex-direction: column; gap: 8px; }
 #changes .foot .row { display: flex; gap: 6px; flex-wrap: wrap; }
-.filelist { padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; font-family: var(--font-mono); color: var(--fg-2); white-space: pre-wrap; }
-.gitlog { padding: 8px 12px; font-size: 12.5px; font-family: var(--font-mono); color: var(--fg-3); white-space: pre; overflow-x: auto; border-bottom: 1px solid var(--line); }
-.diff { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; white-space: pre; padding: 8px 0 20px; }
-.diff .l { padding: 0 12px; } .diff .a { background: var(--add); color: var(--add-fg); } .diff .d { background: var(--del); color: var(--del-fg); } .diff .h { color: var(--fg-3); } .diff .f { background: var(--bg-3); color: var(--fg); font-weight: 600; padding: 4px 12px; margin-top: 10px; }
+.summary { padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--fg-2); }
+.summary .commits { font-family: var(--font-mono); font-size: 12px; color: var(--fg-3); white-space: pre-wrap; margin-top: 4px; }
+.filelist { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.filelist .f { display: flex; gap: 8px; align-items: center; font-family: var(--font-mono); font-size: 12.5px; padding: 3px 6px; border-radius: 6px; cursor: pointer; color: var(--fg-2); width: 100%; text-align: left; }
+.filelist .f:hover { background: var(--bg-3); color: var(--fg); }
+.filelist .f .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filelist .f .a { color: var(--add-fg); } .filelist .f .d { color: var(--del-fg); }
+.filelist .f .tag { font-size: 10.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--fg-3); }
+.fdiff { border-bottom: 1px solid var(--line); }
+.fdiff > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer; background: var(--bg); font-family: var(--font-mono); font-size: 12.5px; position: sticky; top: 0; z-index: 1; }
+.fdiff > summary::-webkit-details-marker { display: none; }
+.fdiff > summary .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.fdiff > summary .a { color: var(--add-fg); } .fdiff > summary .d { color: var(--del-fg); }
+.fdiff .udiff { border-top: 0; max-height: none; }
 .gitout { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); white-space: pre-wrap; max-height: 120px; overflow: auto; }
+.nochanges { padding: 30px 16px; text-align: center; color: var(--fg-3); font-size: 13.5px; }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 14px; z-index: 60; max-width: 90vw; }
 .modal { position: fixed; inset: 0; background: rgba(20,18,12,.45); display: grid; place-items: center; z-index: 50; padding: 20px; }
-.modal .sheet { width: min(460px, 100%); background: var(--bg); border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow); padding: 20px 22px; }
+.modal .sheet { width: min(480px, 100%); background: var(--bg); border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow); padding: 20px 22px; }
 .modal h2 { font-family: var(--font-display); font-weight: 500; margin: 0 0 6px; }
 .modal p { color: var(--fg-2); margin: 0 0 14px; font-size: 14px; }
 
@@ -136,6 +196,7 @@ code, pre { font-family: var(--font-mono); }
   #app.sb-open #sidebar { position: fixed; inset: 0 auto 0 0; width: 280px; z-index: 40; box-shadow: var(--shadow); }
   #changes { position: fixed; inset: 0; z-index: 40; display: none; }
   #app.cp-open #changes { display: flex; }
+  .pill.model, .pill.effort { display: none; }
 }
 </style>
 </head>
@@ -159,8 +220,9 @@ code, pre { font-family: var(--font-mono); }
     <div id="topbar">
       <button class="iconbtn" id="sbToggle" title="Repositories"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18M3 12h18M3 19h18"/></svg></button>
       <div class="title" id="title">Pick a repository</div>
-      <label class="pill"><span class="k">model</span><select id="modelSel"><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option></select></label>
-      <label class="pill"><span class="k">effort</span><select id="effortSel"><option value="">default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label>
+      <span class="mini" id="costTotal" title="Estimated cost of this session"></span>
+      <label class="pill model"><span class="k">model</span><select id="modelSel"><option value="claude-opus-5-5">Opus 5.5</option><option value="claude-sonnet-5-5">Sonnet 5.5</option><option value="claude-haiku-5-5">Haiku 5.5</option></select></label>
+      <label class="pill effort"><span class="k">effort</span><select id="effortSel"><option value="">default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select></label>
       <button class="btn" id="newSession" title="Start a fresh conversation (the agent forgets this chat)">New session</button>
       <button class="iconbtn" id="cpToggle" title="Changes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3v4a1 1 0 0 0 1 1h4M8 3h8l5 5v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 8v13h13"/></svg></button>
     </div>
@@ -169,7 +231,10 @@ code, pre { font-family: var(--font-mono); }
       <div class="box">
         <textarea id="input" rows="1" placeholder="Tell the agent what to do in this repo…"></textarea>
         <div class="row">
-          <span class="hint">Enter to send · Shift+Enter for a new line · the agent can read, edit, run commands, commit and push</span>
+          <label class="mini" title="Auto: runs commands and edits without asking. Ask: you approve each command and edit, like Claude Code's permission prompts.">permissions
+            <select id="modeSel"><option value="auto">auto-approve</option><option value="ask">ask before commands &amp; edits</option></select>
+          </label>
+          <span class="hint">Enter to send · Shift+Enter new line</span>
           <span class="sp"></span>
           <button class="send" id="sendBtn" aria-label="Send" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
         </div>
@@ -178,11 +243,17 @@ code, pre { font-family: var(--font-mono); }
   </section>
 
   <aside id="changes">
-    <div class="head"><div class="t">Changes</div><button class="iconbtn" id="refreshDiff" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></button><button class="iconbtn" id="cpClose" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="head">
+      <div class="t">Changes</div>
+      <div class="tabs"><button id="scopeRun" class="on" title="Everything changed since the last run started, including commits the agent made">This run</button><button id="scopeUnc" title="Working tree vs the last commit">Uncommitted</button></div>
+      <span style="flex:1"></span>
+      <button class="iconbtn" id="refreshDiff" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg></button>
+      <button class="iconbtn" id="cpClose" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
     <div class="body">
-      <div class="filelist" id="fileList">No repository selected.</div>
-      <div class="gitlog" id="gitLog"></div>
-      <div class="diff" id="diff"></div>
+      <div class="summary" id="summary">No repository selected.</div>
+      <div class="filelist" id="fileList" hidden></div>
+      <div id="diffs"></div>
     </div>
     <div class="foot">
       <input id="commitMsg" placeholder="Commit message">
@@ -191,7 +262,7 @@ code, pre { font-family: var(--font-mono); }
         <button class="btn" id="pushBtn">Push</button>
         <button class="btn" id="pullBtn">Pull</button>
         <span style="flex:1"></span>
-        <button class="btn danger" id="discardBtn">Discard changes</button>
+        <button class="btn danger" id="discardBtn">Discard uncommitted</button>
       </div>
       <div class="gitout" id="gitOut" hidden></div>
     </div>
@@ -209,7 +280,7 @@ code, pre { font-family: var(--font-mono); }
 <div class="modal" id="settingsModal" hidden>
   <div class="sheet">
     <h2>Settings</h2>
-    <p>Your Anthropic API key from <a href="https://platform.claude.com" target="_blank" rel="noopener" style="color:var(--accent)">platform.claude.com</a>. Stored only in this browser's localStorage and sent with each run so it is billed to you.</p>
+    <p>Your Anthropic API key from <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a>. Stored only in this browser's localStorage and sent with each run so it is billed to you.</p>
     <form id="settingsForm">
       <input id="keyInput" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px">
@@ -227,12 +298,12 @@ code, pre { font-family: var(--font-mono); }
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let settings = Object.assign({ apiKey: "", model: "claude-opus-5-5", effort: "", theme: "" }, store.get("ra.settings", {}));
+let settings = Object.assign({ apiKey: "", model: "claude-opus-5-5", effort: "", theme: "", mode: "auto" }, store.get("ra.settings", {}));
 let me = null;
 const saveSettings = () => store.set("ra.settings", settings);
-let sessions = store.get("ra.sessions", {});   // slug -> { session_id, messages: [...] }
+let sessions = store.get("ra.sessions", {});   // key -> { session_id, messages: [...], cost }
 const saveSessions = () => store.set("ra.sessions", sessions);
-let repos = [], active = null, es = null, running = false, cfg = {};
+let repos = [], active = null, es = null, running = false, cfg = {}, scope = "run";
 
 /* theme */
 function applyTheme() { const sys = matchMedia("(prefers-color-scheme: dark)").matches; const dark = settings.theme ? settings.theme === "dark" : sys; document.documentElement.dataset.theme = dark ? "dark" : "light"; }
@@ -243,7 +314,62 @@ function toast(t) { const n = el("div", "toast", t); document.body.appendChild(n
 marked.setOptions({ gfm: true });
 const md = (t) => { try { return DOMPurify.sanitize(marked.parse(t)); } catch { return t; } };
 
-/* api */
+/* ---------- line diff (LCS) for inline Edit/Write cards ---------- */
+function lineDiff(a, b) {
+  const A = a.split("\n"), B = b.split("\n");
+  if (A.length * B.length > 250000) return null; // too big; caller falls back
+  const n = A.length, m = B.length; const dp = new Array((n + 1) * (m + 1)).fill(0);
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i * (m + 1) + j] = A[i] === B[j] ? dp[(i + 1) * (m + 1) + j + 1] + 1 : Math.max(dp[(i + 1) * (m + 1) + j], dp[i * (m + 1) + j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n && j < m) { if (A[i] === B[j]) { out.push({ t: "c", s: A[i] }); i++; j++; } else if (dp[(i + 1) * (m + 1) + j] >= dp[i * (m + 1) + j + 1]) { out.push({ t: "d", s: A[i] }); i++; } else { out.push({ t: "a", s: B[j] }); j++; } }
+  while (i < n) { out.push({ t: "d", s: A[i] }); i++; } while (j < m) { out.push({ t: "a", s: B[j] }); j++; }
+  return out;
+}
+function renderLineDiff(rows, { context = 3 } = {}) {
+  const box = el("div", "udiff");
+  const keep = new Array(rows.length).fill(false);
+  rows.forEach((r, i) => { if (r.t !== "c") for (let k = Math.max(0, i - context); k <= Math.min(rows.length - 1, i + context); k++) keep[k] = true; });
+  let skipping = 0;
+  rows.forEach((r, i) => {
+    if (!keep[i]) { skipping++; return; }
+    if (skipping) { box.appendChild(el("div", "skip", `… ${skipping} unchanged lines`)); skipping = 0; }
+    const ln = el("div", "ln " + r.t); ln.append(el("span", "g", r.t === "a" ? "+" : r.t === "d" ? "−" : ""), el("span", "t", r.s)); box.appendChild(ln);
+  });
+  if (skipping) box.appendChild(el("div", "skip", `… ${skipping} unchanged lines`));
+  return box;
+}
+function editDiffNode(oldS, newS) {
+  const rows = lineDiff(oldS || "", newS || "");
+  if (!rows) { const p = el("pre"); p.textContent = "- " + (oldS || "").split("\n").join("\n- ") + "\n+ " + (newS || "").split("\n").join("\n+ "); return p; }
+  return renderLineDiff(rows, { context: 2 });
+}
+const countsOf = (rows) => rows ? { a: rows.filter((r) => r.t === "a").length, d: rows.filter((r) => r.t === "d").length } : null;
+
+/* ---------- unified diff parser for the Changes panel ---------- */
+function parseUnified(text) {
+  const files = []; let cur = null;
+  text.split("\n").forEach((line) => {
+    if (line.startsWith("diff --git")) { const m = line.match(/^diff --git a\/(.*?) b\/(.*)$/); cur = { file: m ? m[2] : line, lines: [], a: 0, d: 0, isNew: false, isDel: false }; files.push(cur); return; }
+    if (!cur) return;
+    if (line.startsWith("new file mode")) { cur.isNew = true; return; }
+    if (line.startsWith("deleted file mode")) { cur.isDel = true; return; }
+    if (line.startsWith("Binary")) { cur.lines.push({ t: "h", s: line }); return; }
+    if (line.startsWith("index ") || line.startsWith("--- ") || line.startsWith("+++ ") || line.startsWith("similarity") || line.startsWith("rename") || line.startsWith("old mode") || line.startsWith("new mode")) return;
+    if (line.startsWith("@@")) { cur.lines.push({ t: "h", s: line }); return; }
+    if (line.startsWith("+")) { cur.a++; cur.lines.push({ t: "a", s: line.slice(1) }); return; }
+    if (line.startsWith("-")) { cur.d++; cur.lines.push({ t: "d", s: line.slice(1) }); return; }
+    if (line.startsWith("\\")) return;
+    cur.lines.push({ t: "c", s: line.slice(1) });
+  });
+  return files;
+}
+function unifiedNode(f) {
+  const box = el("div", "udiff");
+  f.lines.forEach((r) => { if (r.t === "h") { box.appendChild(el("div", "h", r.s)); return; } const ln = el("div", "ln " + r.t); ln.append(el("span", "g", r.t === "a" ? "+" : r.t === "d" ? "−" : ""), el("span", "t", r.s)); box.appendChild(ln); });
+  return box;
+}
+
+/* ---------- api ---------- */
 async function api(path, opts = {}) {
   const headers = Object.assign({ "content-type": "application/json" }, opts.headers || {});
   if (opts.key) headers["x-anthropic-key"] = settings.apiKey;
@@ -264,20 +390,18 @@ function updateStatus() {
   txt.textContent = settings.apiKey ? "@" + me.login : "@" + me.login + " · add your API key →";
 }
 
-/* repos */
-async function loadRepos() {
-  repos = await api("/api/repos");
-  renderRepos();
-}
+/* ---------- repos ---------- */
+async function loadRepos() { repos = await api("/api/repos"); renderRepos(); }
 function renderRepos() {
   const list = $("#repoList"); list.innerHTML = "";
   if (!repos.length) list.appendChild(el("div", "label", "none yet — paste a repo above"));
   repos.forEach((r) => {
-    const b = el("button", "repo" + (r.slug === active ? " active" : ""));
-    const n = el("div", "n"); n.textContent = r.slug; const s = el("small", null, r.branch + (r.ahead ? ` · ${r.ahead} to push` : "")); n.appendChild(s);
-    b.appendChild(n);
-    if (r.running) b.appendChild(el("span", "spin"));
-    else if (r.dirty) { const bd = el("span", "badge dirty", r.dirty + " changed"); b.appendChild(bd); }
+    const b = el("div", "repo" + (r.slug === active ? " active" : "")); b.setAttribute("role", "button");
+    const n = el("div", "n"); n.textContent = r.slug; n.appendChild(el("small", null, r.branch + (r.ahead ? ` · ${r.ahead} to push` : ""))); b.appendChild(n);
+    if (r.running) b.appendChild(el("span", "spin")); else if (r.dirty) b.appendChild(el("span", "badge dirty", r.dirty + " changed"));
+    const d = el("button", "del iconbtn"); d.title = "Remove from server"; d.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`;
+    d.onclick = async (e) => { e.stopPropagation(); if (!confirm(`Remove ${r.slug} from the server? Uncommitted changes there are lost. Your chat history stays.`)) return; try { await api("/api/repos", { method: "DELETE", body: { repo: r.slug } }); if (active === r.slug) active = null; await loadRepos(); renderThread(); } catch (err) { toast(err.message); } };
+    b.appendChild(d);
     b.onclick = () => selectRepo(r.slug);
     list.appendChild(b);
   });
@@ -288,54 +412,102 @@ $("#addForm").onsubmit = async (e) => {
   try { const r = await api("/api/repos", { method: "POST", body: { url: u } }); $("#repoUrl").value = ""; await loadRepos(); selectRepo(r.slug); toast("Cloned " + r.slug); }
   catch (err) { toast(err.message); } finally { btn.disabled = false; }
 };
-
 async function selectRepo(slug) {
-  active = slug; renderRepos();
+  active = slug; store.set("ra.active", slug); renderRepos();
   const r = repos.find((x) => x.slug === slug);
-  $("#title").innerHTML = ""; $("#title").textContent = slug; if (r) { const s = el("small", null, r.branch); $("#title").appendChild(s); }
+  $("#title").textContent = slug; if (r) $("#title").appendChild(el("small", null, r.branch));
   $("#sendBtn").disabled = false; $("#input").focus();
   if (innerWidth <= 900) $("#app").classList.remove("sb-open");
-  renderThread();
-  loadDiff();
-  if (r?.running) attach(); else running = false, setRunningUI(false);
+  renderThread(); updateCost(); loadDiff();
+  if (r?.running) attach(); else setRunningUI(false);
 }
 
-/* thread */
+/* ---------- thread ---------- */
 const thread = $("#thread"), scroller = $("#scroll");
 const sessKey = () => (me ? me.id + ":" : "") + active;
-const sess = () => (sessions[sessKey()] ||= { session_id: null, messages: [] });
+const sess = () => (sessions[sessKey()] ||= { session_id: null, messages: [], cost: 0 });
+function updateCost() { const s = active ? sess() : null; $("#costTotal").textContent = s && s.cost ? `~$${s.cost.toFixed(3)} this session` : ""; }
 function renderThread() {
   thread.innerHTML = "";
+  if (!active) { thread.appendChild(emptyNode()); return; }
   const s = sess();
-  if (!s.messages.length) {
-    const e = el("div", "empty"); e.innerHTML = `<h2>${active ? "What should I do in " + active + "?" : "Pick a repository"}</h2><p>Describe a change, a bug, or a feature. The agent reads the code, edits files, runs tests, and can commit and push when you ask. Watch each step as it happens; review the diff on the right before pushing.</p>`;
-    thread.appendChild(e); return;
-  }
+  if (!s.messages.length) { thread.appendChild(emptyNode()); return; }
   s.messages.forEach((m) => thread.appendChild(m.role === "user" ? userNode(m.text) : agentNode(m)));
   scroller.scrollTop = scroller.scrollHeight;
 }
+function emptyNode() { const e = el("div", "empty"); e.innerHTML = `<h2>${active ? "What should I do in " + active + "?" : "Pick a repository"}</h2><p>Describe a change, a bug, or a feature. The agent reads the code, edits files, runs tests, and can commit and push when you ask. Every edit shows as a diff as it happens. Switch permissions to "ask" if you want to approve each command and edit.</p>`; return e; }
 function userNode(text) { const n = el("div", "msg user"); n.appendChild(el("div", "body", text)); return n; }
 function agentNode(m) {
   const n = el("div", "msg agent"); n.appendChild(el("div", "avatar", "R"));
   const body = el("div", "body"); n.appendChild(body);
-  (m.items || []).forEach((it) => body.appendChild(itemNode(it)));
+  (m.items || []).forEach((it) => appendItem(body, it));
+  if (m.changes) body.appendChild(changesNode(m.changes));
   if (m.result) body.appendChild(resultNode(m.result));
   return n;
+}
+function appendItem(body, it) {
+  // nest tool calls made by a subagent under their Task card
+  if (it.kind === "tool" && it.parent) { const parentCard = body.querySelector(`details[data-id="${it.parent}"] > .children`); if (parentCard) { parentCard.appendChild(itemNode(it)); return; } }
+  if (it.kind === "todo") { const old = body.querySelector(".todo"); if (old) { old.replaceWith(itemNode(it)); return; } }
+  body.appendChild(itemNode(it));
 }
 function itemNode(it) {
   if (it.kind === "text") { const d = el("div", "md"); d.innerHTML = md(it.text); return d; }
   if (it.kind === "thinking") return el("div", "think", it.text);
+  if (it.kind === "todo") return todoNode(it.todos);
+  if (it.kind === "permission") return permNode(it);
   if (it.kind === "tool") {
     const d = el("details", "tool " + (it.status || "ok")); d.dataset.id = it.id;
-    const s = el("summary"); s.appendChild(el("span", "ic", abbr(it.name))); s.appendChild(el("span", "nm", it.name)); s.appendChild(el("span", "sm", it.summary || "")); s.appendChild(el("span", "st")); d.appendChild(s);
-    if (it.input && (it.name === "Edit")) { const p = el("pre", "edit"); const o = el("span", "o", "- " + (it.input.old_string || "").split("\n").join("\n- ")); const nn = el("span", "n", "+ " + (it.input.new_string || "").split("\n").join("\n+ ")); p.append(o, nn); d.appendChild(p); }
-    else if (it.input && it.name === "Write") d.appendChild(el("pre", "edit", it.input.content || ""));
-    if (it.output) d.appendChild(el("pre", null, it.output));
+    const s = el("summary"); s.append(el("span", "ic", abbr(it.name)), el("span", "nm", it.name), el("span", "sm", it.summary || ""));
+    let diffNode = null, counts = null;
+    if (it.name === "Edit" && it.input) { const rows = lineDiff(it.input.old_string || "", it.input.new_string || ""); counts = countsOf(rows); diffNode = rows ? renderLineDiff(rows, { context: 2 }) : editDiffNode(it.input.old_string, it.input.new_string); }
+    else if (it.name === "MultiEdit" && it.input?.edits) { diffNode = el("div"); let a = 0, dd = 0; it.input.edits.forEach((e) => { const rows = lineDiff(e.old_string || "", e.new_string || ""); const c = countsOf(rows); if (c) { a += c.a; dd += c.d; } diffNode.appendChild(rows ? renderLineDiff(rows, { context: 2 }) : editDiffNode(e.old_string, e.new_string)); }); counts = { a, d: dd }; }
+    else if (it.name === "Write" && it.input) { const prev = it.previous ?? ""; const rows = lineDiff(prev, it.input.content || ""); counts = countsOf(rows) || { a: (it.input.content || "").split("\n").length, d: 0 }; diffNode = rows ? renderLineDiff(rows, { context: 2 }) : (() => { const p = el("pre"); p.textContent = it.input.content || ""; return p; })(); if (it.previous == null) s.querySelector(".sm").textContent += "  (new file)"; }
+    if (counts) { const c = el("span", "cnt"); c.innerHTML = `<span class="a">+${counts.a}</span><span class="d">−${counts.d}</span>`; s.appendChild(c); }
+    s.appendChild(el("span", "st")); d.appendChild(s);
+    if (diffNode) d.appendChild(diffNode);
+    if (it.name === "Task") d.appendChild(el("div", "children"));
+    if (it.output) d.appendChild(outputPre(it));
+    if (it.name === "Edit" || it.name === "Write" || it.name === "MultiEdit") d.open = true;
     return d;
   }
   return el("div");
 }
-function abbr(name) { return { Bash: ">_", Read: "R", Edit: "E", MultiEdit: "E", Write: "W", Glob: "G", Grep: "?", WebFetch: "@", WebSearch: "S", Task: "T", TodoWrite: "✓" }[name] || name.slice(0, 2); }
+function outputPre(it) { const p = el("pre"); p.className = "out"; p.textContent = it.output; return p; }
+function abbr(name) { return { Bash: ">_", Read: "R", Edit: "±", MultiEdit: "±", Write: "W", Glob: "G", Grep: "?", WebFetch: "@", WebSearch: "S", Task: "T", TodoWrite: "✓", NotebookEdit: "N" }[name] || name.slice(0, 2); }
+function todoNode(todos) {
+  const d = el("div", "todo"); d.appendChild(el("div", "h", "Plan"));
+  (todos || []).forEach((t) => { const it = el("div", "it " + (t.status || "pending")); it.append(el("span", "box", t.status === "completed" ? "✓" : ""), el("span", null, t.status === "in_progress" && t.activeForm ? t.activeForm : t.content)); d.appendChild(it); });
+  return d;
+}
+function permNode(it) {
+  const d = el("div", "perm" + (it.answered ? " answered" : "")); d.dataset.pid = it.id;
+  const q = el("div", "q"); q.innerHTML = `<b>Allow ${it.tool}?</b>`; q.appendChild(el("span", null, it.answered ? (it.allow ? "Allowed" : "Denied") : "The agent wants to run this.")); d.appendChild(q);
+  if (it.input && it.tool === "Edit") { d.appendChild(el("div", "cmd", it.input.file_path || "")); d.appendChild(editDiffNode(it.input.old_string, it.input.new_string)); }
+  else if (it.input && it.tool === "Write") { const p = el("pre", "cmd"); p.textContent = (it.input.content || "").slice(0, 3000); d.appendChild(el("div", "cmd", it.input.file_path || "")); d.appendChild(p); }
+  else d.appendChild(el("div", "cmd", it.summary || ""));
+  if (!it.answered) {
+    const row = el("div", "row");
+    const ok = el("button", "btn ok sm", "Allow"), all = el("button", "btn sm", "Allow all this run"), no = el("button", "btn danger sm", "Deny");
+    ok.onclick = () => answerPerm(it, true, false); all.onclick = () => answerPerm(it, true, true); no.onclick = () => answerPerm(it, false, false);
+    row.append(ok, all, no); d.appendChild(row);
+  }
+  return d;
+}
+async function answerPerm(it, allow, allowAll) {
+  try { await api("/api/run/permission", { method: "POST", body: { repo: active, id: it.id, allow, allowAll } }); } catch (e) { toast(e.message); }
+}
+function changesNode(c) {
+  const d = el("div", "changes");
+  const h = el("div", "h"); const add = c.files.reduce((s, f) => s + f.add, 0), del = c.files.reduce((s, f) => s + f.del, 0);
+  h.appendChild(el("span", null, c.files.length ? `${c.files.length} file${c.files.length === 1 ? "" : "s"} changed` : "No files changed"));
+  if (c.files.length) { const cnt = el("span", "cnt"); cnt.innerHTML = `<span class="a">+${add}</span> <span class="d">−${del}</span>`; h.appendChild(cnt); }
+  if (c.commits?.length) h.appendChild(el("span", null, `· ${c.commits.length} commit${c.commits.length === 1 ? "" : "s"}`));
+  d.appendChild(h);
+  c.files.slice(0, 40).forEach((f) => { const b = el("button", "f"); b.innerHTML = `<span class="p"></span><span class="a">+${f.add}</span><span class="d">−${f.del}</span>`; b.querySelector(".p").textContent = f.file + (f.untracked ? "  (new)" : ""); b.onclick = () => { scope = "run"; $("#app").classList.add("cp-open"); loadDiff(f.file); }; d.appendChild(b); });
+  if (c.commits?.length) d.appendChild(el("div", "commits", c.commits.join("\n")));
+  return d;
+}
 function resultNode(r) {
   const d = el("div", "result" + (r.is_error ? " bad" : ""));
   if (r.is_error) d.appendChild(el("span", null, "Run ended with an error" + (r.errors?.length ? ": " + r.errors.join("; ") : "") + (r.subtype && r.subtype !== "success" ? " (" + r.subtype + ")" : "")));
@@ -343,8 +515,8 @@ function resultNode(r) {
   return d;
 }
 
-/* run */
-let cur = null; // { msg, body, textNode, textBuf, thinkNode }
+/* ---------- run ---------- */
+let cur = null;
 function setRunningUI(on) {
   running = on;
   const b = $("#sendBtn"); b.classList.toggle("stop", on);
@@ -353,44 +525,40 @@ function setRunningUI(on) {
   for (const id of ["commitBtn", "pushBtn", "pullBtn", "discardBtn"]) $("#" + id).disabled = on;
 }
 async function send() {
-  const text = $("#input").value.trim(); if (!text || !active) return;
-  if (running) return;
+  const text = $("#input").value.trim(); if (!text || !active || running) return;
+  if (!settings.apiKey) { $("#settingsBtn").click(); return toast("Add your Anthropic API key first"); }
   const s = sess(); s.messages.push({ role: "user", text }); saveSessions();
-  $("#input").value = ""; autosize();
-  renderThread();
-  try {
-    if (!settings.apiKey) { $("#settingsBtn").click(); throw new Error("Add your Anthropic API key first"); }
-    await api("/api/run", { method: "POST", key: true, body: { repo: active, prompt: text, sessionId: s.session_id, model: settings.model, effort: settings.effort } });
-  } catch (e) { toast(e.message); s.messages.pop(); saveSessions(); renderThread(); return; }
+  $("#input").value = ""; autosize(); renderThread();
+  try { await api("/api/run", { method: "POST", key: true, body: { repo: active, prompt: text, sessionId: s.session_id, model: settings.model, effort: settings.effort, mode: settings.mode } }); }
+  catch (e) { toast(e.message); s.messages.pop(); saveSessions(); renderThread(); return; }
   attach();
 }
 function attach() {
   if (es) es.close();
   setRunningUI(true);
   const s = sess();
-  // the agent message we stream into
-  const msg = { role: "agent", items: [], result: null };
+  const msg = { role: "agent", items: [], result: null, changes: null };
   s.messages.push(msg);
-  const node = agentNode(msg); if (thread.querySelector(".empty")) thread.innerHTML = ""; thread.appendChild(node);
+  if (thread.querySelector(".empty")) thread.innerHTML = "";
+  const node = agentNode(msg); thread.appendChild(node);
   cur = { msg, body: node.querySelector(".body"), textNode: null, textBuf: "", thinkNode: null, thinkBuf: "" };
-  const url = `/api/run/events?repo=${encodeURIComponent(active)}`;
-  es = new EventSource(url);
+  es = new EventSource(`/api/run/events?repo=${encodeURIComponent(active)}`);
   const slugAtStart = active;
   es.onmessage = (e) => {
     if (active !== slugAtStart) return;
-    const ev = JSON.parse(e.data); const stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 140;
+    const ev = JSON.parse(e.data); const stick = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 160;
     handle(ev);
     if (stick) scroller.scrollTop = scroller.scrollHeight;
   };
-  es.onerror = () => { /* server closes the stream when done; reconnect handled by 'done' */ };
 }
 function handle(ev) {
   const s = sess();
   switch (ev.type) {
-    case "init": s.session_id = ev.session_id; saveSessions(); break;
+    case "start": break;
+    case "init": s.session_id = ev.session_id; break;
     case "thinking": {
       if (!cur.thinkNode) { cur.thinkBuf = ""; cur.thinkNode = el("div", "think"); cur.body.appendChild(cur.thinkNode); cur.msg.items.push({ kind: "thinking", text: "" }); }
-      cur.thinkBuf += ev.delta; cur.thinkNode.textContent = cur.thinkBuf.slice(-600); cur.msg.items[cur.msg.items.length - 1].text = cur.thinkBuf.slice(-600); break;
+      cur.thinkBuf += ev.delta; const t = cur.thinkBuf.slice(-600); cur.thinkNode.textContent = t; cur.msg.items[cur.msg.items.length - 1].text = t; break;
     }
     case "text": {
       cur.thinkNode = null;
@@ -400,28 +568,33 @@ function handle(ev) {
     case "text_end": if (cur.textNode) { cur.textNode.classList.remove("cursor"); cur.textNode = null; } break;
     case "tool_use": {
       cur.textNode = null; cur.thinkNode = null;
-      const it = { kind: "tool", id: ev.id, name: ev.name, summary: ev.summary, input: ev.input, status: "running" };
-      cur.msg.items.push(it); cur.body.appendChild(itemNode(it)); break;
+      if (ev.name === "TodoWrite" && ev.todos) { const prev = cur.msg.items.findIndex((x) => x.kind === "todo"); const it = { kind: "todo", todos: ev.todos }; if (prev >= 0) cur.msg.items[prev] = it; else cur.msg.items.push(it); appendItem(cur.body, it); break; }
+      const it = { kind: "tool", id: ev.id, name: ev.name, summary: ev.summary, input: ev.input, previous: ev.previous, parent: ev.parent, status: "running" };
+      cur.msg.items.push(it); appendItem(cur.body, it); break;
     }
     case "tool_result": {
       const it = cur.msg.items.find((x) => x.kind === "tool" && x.id === ev.id); if (!it) break;
-      it.status = ev.is_error ? "err" : "ok"; it.output = ev.output;
-      const d = cur.body.querySelector(`details[data-id="${ev.id}"]`); if (d) { d.className = "tool " + it.status; if (ev.output) d.appendChild(el("pre", null, ev.output)); }
+      it.status = ev.is_error ? (/declined|Blocked/.test(ev.output || "") ? "denied" : "err") : "ok"; it.output = ev.output;
+      const d = cur.body.querySelector(`details[data-id="${ev.id}"]`); if (d) { d.className = "tool " + it.status; if (ev.output) d.appendChild(outputPre(it)); if (it.status === "err") d.open = true; }
       break;
     }
+    case "permission": { const it = { kind: "permission", id: ev.id, tool: ev.tool, summary: ev.summary, input: ev.input, answered: false }; cur.msg.items.push(it); cur.body.appendChild(itemNode(it)); break; }
+    case "permission_result": { const it = cur.msg.items.find((x) => x.kind === "permission" && x.id === ev.id); if (!it) break; it.answered = true; it.allow = ev.allow; const n = cur.body.querySelector(`.perm[data-pid="${ev.id}"]`); if (n) n.replaceWith(itemNode(it)); break; }
+    case "changes": { if (!(ev.files || []).length && !(ev.commits || []).length) break; cur.msg.changes = { files: ev.files || [], commits: ev.commits || [] }; cur.body.appendChild(changesNode(cur.msg.changes)); break; }
     case "result": {
       s.session_id = ev.session_id || s.session_id;
       if (ev.text && !cur.msg.items.some((x) => x.kind === "text" && x.text.trim() === ev.text.trim())) { cur.msg.items.push({ kind: "text", text: ev.text }); cur.body.appendChild(itemNode({ kind: "text", text: ev.text })); }
       cur.msg.result = { is_error: ev.is_error, subtype: ev.subtype, errors: ev.is_error && ev.text && !(ev.errors || []).length ? [ev.text] : ev.errors, turns: ev.turns, duration_ms: ev.duration_ms, cost: ev.cost };
+      s.cost = (s.cost || 0) + (ev.cost || 0); updateCost();
       cur.body.appendChild(resultNode(cur.msg.result)); break;
     }
     case "error": if (cur.msg.result) break; cur.msg.result = { is_error: true, errors: [ev.message] }; cur.body.appendChild(resultNode(cur.msg.result)); break;
     case "done": {
       if (cur.textNode) cur.textNode.classList.remove("cursor");
       if (es) { es.close(); es = null; }
-      setRunningUI(false); saveSessions();
+      setRunningUI(false);
       if (ev.repo) { const i = repos.findIndex((r) => r.slug === ev.repo.slug); if (i >= 0) repos[i] = ev.repo; renderRepos(); }
-      loadDiff(); break;
+      scope = "run"; loadDiff(); break;
     }
   }
   saveSessions();
@@ -431,28 +604,40 @@ $("#sendBtn").onclick = () => (running ? stop() : send());
 $("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!running) send(); } });
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }
 $("#input").addEventListener("input", autosize);
-$("#newSession").onclick = () => { if (!active) return; if (running) return toast("Stop the run first"); sessions[sessKey()] = { session_id: null, messages: [] }; saveSessions(); renderThread(); toast("New session"); };
+$("#newSession").onclick = () => { if (!active) return; if (running) return toast("Stop the run first"); sessions[sessKey()] = { session_id: null, messages: [], cost: 0 }; saveSessions(); renderThread(); updateCost(); toast("New session"); };
 
-/* changes panel */
-async function loadDiff() {
-  if (!active) return;
+/* ---------- changes panel ---------- */
+function setScopeUI() { $("#scopeRun").classList.toggle("on", scope === "run"); $("#scopeUnc").classList.toggle("on", scope === "uncommitted"); }
+$("#scopeRun").onclick = () => { scope = "run"; loadDiff(); }; $("#scopeUnc").onclick = () => { scope = "uncommitted"; loadDiff(); };
+const cssId = (s) => s.replace(/[^\w.-]/g, "_");
+async function loadDiff(focusFile) {
+  setScopeUI(); if (!active) return;
   try {
-    const d = await api(`/api/git/diff?repo=${encodeURIComponent(active)}`);
-    const files = d.status.trim(); $("#fileList").textContent = files || "Working tree clean.";
-    $("#gitLog").textContent = d.log.trim();
-    const diff = $("#diff"); diff.innerHTML = "";
-    d.diff.split("\n").forEach((line) => {
-      let cls = "l";
-      if (line.startsWith("+++") || line.startsWith("---")) cls += " h"; else if (line.startsWith("diff --git")) cls += " f"; else if (line.startsWith("@@")) cls += " h"; else if (line.startsWith("+")) cls += " a"; else if (line.startsWith("-")) cls += " d";
-      const n = el("div", cls, line.startsWith("diff --git") ? line.replace(/^diff --git a\/(.*) b\/.*$/, "$1") : line); diff.appendChild(n);
+    const d = await api(`/api/git/diff?repo=${encodeURIComponent(active)}&scope=${scope}`);
+    const files = parseUnified(d.diff);
+    const sum = $("#summary"); sum.innerHTML = "";
+    const add = (d.files || []).reduce((s, f) => s + f.add, 0), del = (d.files || []).reduce((s, f) => s + f.del, 0);
+    if (scope === "run" && !d.base) sum.appendChild(el("div", null, files.length ? `No run yet on this server. Showing ${files.length} uncommitted file${files.length === 1 ? "" : "s"}.` : "No run yet on this server. Working tree clean."));
+    else sum.appendChild(el("div", null, files.length ? `${files.length} file${files.length === 1 ? "" : "s"} · +${add} −${del}${scope === "run" ? " since the run started" : " uncommitted"}` : (scope === "run" ? "Nothing changed since the run started." : "Working tree clean.")));
+    if (scope === "run" && d.commits?.length) sum.appendChild(el("div", "commits", "Commits made:\n" + d.commits.join("\n")));
+    const fl = $("#fileList"); fl.innerHTML = ""; fl.hidden = files.length < 2;
+    files.forEach((f) => { const b = el("button", "f"); b.innerHTML = `<span class="p"></span>${f.isNew ? '<span class="tag">new</span>' : f.isDel ? '<span class="tag">deleted</span>' : ""}<span class="a">+${f.a}</span><span class="d">−${f.d}</span>`; b.querySelector(".p").textContent = f.file; b.onclick = () => { const t = document.getElementById("fd-" + cssId(f.file)); if (t) { t.open = true; t.scrollIntoView({ block: "start", behavior: "smooth" }); } }; fl.appendChild(b); });
+    const box = $("#diffs"); box.innerHTML = "";
+    if (!files.length) box.appendChild(el("div", "nochanges", scope === "run" ? "When the agent edits or commits, the diff shows here." : "No uncommitted changes."));
+    files.forEach((f) => {
+      const dt = el("details", "fdiff"); dt.id = "fd-" + cssId(f.file); dt.open = files.length <= 6 || f.file === focusFile;
+      const s = el("summary"); s.innerHTML = `<span class="p"></span><span class="a">+${f.a}</span><span class="d">−${f.d}</span>`; s.querySelector(".p").textContent = f.file + (f.isNew ? "  (new)" : f.isDel ? "  (deleted)" : "");
+      dt.append(s, f.lines.length > 4000 ? el("div", "nochanges", "Diff too large to display inline.") : unifiedNode(f)); box.appendChild(dt);
     });
+    if (focusFile) { const t = document.getElementById("fd-" + cssId(focusFile)); if (t) t.scrollIntoView({ block: "start" }); }
     if (d.info) { const i = repos.findIndex((r) => r.slug === d.info.slug); if (i >= 0) repos[i] = d.info; renderRepos(); const t = $("#title").querySelector("small"); if (t) t.textContent = d.info.branch + (d.info.ahead ? ` · ${d.info.ahead} to push` : ""); }
-  } catch (e) { $("#fileList").textContent = e.message; }
+  } catch (e) { $("#summary").textContent = e.message; }
 }
 async function gitAction(action) {
   if (!active) return;
   const message = $("#commitMsg").value;
   if (action === "commit" && !message.trim()) return toast("Write a commit message first");
+  if (action === "discard" && !confirm("Throw away all uncommitted changes in this repo?")) return;
   const out = $("#gitOut"); out.hidden = false; out.textContent = action + "…";
   try { const r = await api("/api/git", { method: "POST", body: { repo: active, action, message } }); out.textContent = r.out || "Done."; if (action === "commit") $("#commitMsg").value = ""; toast(action === "push" ? "Pushed" : action === "commit" ? "Committed" : "Done"); }
   catch (e) { out.textContent = e.message; toast(e.message); }
@@ -462,16 +647,17 @@ $("#commitBtn").onclick = () => gitAction("commit");
 $("#pushBtn").onclick = () => gitAction("push");
 $("#pullBtn").onclick = () => gitAction("pull");
 $("#discardBtn").onclick = () => gitAction("discard");
-$("#refreshDiff").onclick = loadDiff;
+$("#refreshDiff").onclick = () => loadDiff();
 $("#cpToggle").onclick = () => $("#app").classList.toggle("cp-open");
 $("#cpClose").onclick = () => $("#app").classList.remove("cp-open");
 $("#sbToggle").onclick = () => { if (innerWidth <= 900) $("#app").classList.toggle("sb-open"); else $("#app").classList.toggle("sb-closed"); };
 
-/* settings */
+/* ---------- settings ---------- */
 $("#modelSel").value = settings.model; $("#modelSel").onchange = (e) => { settings.model = e.target.value; saveSettings(); };
 $("#effortSel").value = settings.effort; $("#effortSel").onchange = (e) => { settings.effort = e.target.value; saveSettings(); };
+$("#modeSel").value = settings.mode; $("#modeSel").onchange = (e) => { settings.mode = e.target.value; saveSettings(); };
 
-/* boot */
+/* ---------- boot ---------- */
 async function boot() {
   try {
     cfg = await fetch("/api/config").then((r) => r.json());
@@ -482,11 +668,10 @@ async function boot() {
     if (!settings.apiKey) $("#settingsBtn").click();
     api("/api/github/repos").then((list) => { const dl = $("#ghRepos"); dl.innerHTML = ""; list.forEach((r) => { const o = document.createElement("option"); o.value = r.slug; dl.appendChild(o); }); }).catch(() => {});
     const last = store.get("ra.active", null);
-    if (last && repos.some((r) => r.slug === last)) selectRepo(last); else if (repos.length) selectRepo(repos[0].slug);
+    if (last && repos.some((r) => r.slug === last)) selectRepo(last); else if (repos.length) selectRepo(repos[0].slug); else renderThread();
     setInterval(() => { if (!running) loadRepos().catch(() => {}); }, 20000);
   } catch (e) { $("#statusText").textContent = e.message; }
 }
-const _select = selectRepo; selectRepo = async (slug) => { store.set("ra.active", slug); return _select(slug); };
 setRunningUI(false);
 boot();
 })();

@@ -106,8 +106,17 @@ async function listRepos(user) {
 }
 
 /* ---------- agent runs ---------- */
-const runs = new Map();     // key -> { controller, clients:Set<res>, events:[] }
+const runs = new Map();     // key -> { controller, clients:Set<res>, events:[], mode, pending:Map }
 const lastRuns = new Map(); // key -> events[] of the most recent finished run
+const runBase = new Map();  // key -> commit the most recent run started from (for "this run" diffs)
+const READ_ONLY = new Set(["Read", "Glob", "Grep", "WebFetch", "WebSearch", "TodoWrite", "Task", "ToolSearch", "LS"]);
+async function changesSince(user, dir, base) {
+  const [num, status, log] = await Promise.all([git(user, dir, "diff", "--numstat", base), git(user, dir, "status", "--porcelain=v1", "--untracked-files=all"), git(user, dir, "log", "--oneline", base + "..HEAD")]);
+  const files = new Map();
+  num.out.split("\n").filter(Boolean).forEach((l) => { const [a, d, f] = l.split("\t"); files.set(f, { file: f, add: a === "-" ? 0 : +a, del: d === "-" ? 0 : +d }); });
+  status.out.split("\n").filter((l) => l.startsWith("??")).forEach((l) => { const f = l.slice(3); try { const n = fs.readFileSync(path.join(dir, f), "utf8").split("\n").length; files.set(f, { file: f, add: n, del: 0, untracked: true }); } catch {} });
+  return { files: [...files.values()], commits: log.out.split("\n").filter(Boolean) };
+}
 const DANGEROUS = [/\brm\s+-[a-z]*r[a-z]*\s+(\/|~|\$HOME|\.\.)\/?(\s|$)/i, /\bgit\s+push\b.*--force\b/i, /\bgit\s+push\s+-f\b/i, /\bgit\s+reset\s+--hard\b/i, /\bgit\s+clean\s+-[a-z]*f/i, /\bgit\s+branch\s+-D\b/, /\bgh\s+repo\s+delete\b/i, /\bcurl\b.*\|\s*(ba)?sh\b/i, /\bsudo\b/i, /\bmkfs\b/, /\bdd\s+if=/];
 const SECRETS = /\b(printenv|env)\b\s*$|\$GH_TOKEN|\$GITHUB_TOKEN|ANTHROPIC_API_KEY|GIT_ASKPASS|\.askpass|\.session-secret/i;
 
@@ -129,15 +138,17 @@ function summarizeTool(name, input) {
 const textOf = (c) => (typeof c === "string" ? c : Array.isArray(c) ? c.map((b) => (b.type === "text" ? b.text : "")).join("") : "");
 const insideDir = (p, dir) => { if (!p) return true; const abs = path.resolve(dir, String(p)); return abs === dir || abs.startsWith(dir + path.sep); };
 
-async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey }) {
+async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey, mode }) {
   const dir = safeRepo(user, slug); if (!dir) throw new Error("Unknown repo");
   const key = runKey(user, slug);
   if (runs.has(key)) throw new Error("A run is already in progress for this repo");
   if ([...runs.keys()].filter((k) => k.startsWith(user.id + "/")).length >= MAX_RUNS_PER_USER) throw new Error(`You already have ${MAX_RUNS_PER_USER} runs going. Wait for one to finish.`);
   const controller = new AbortController();
-  const r = { controller, clients: new Set(), events: [], startedAt: Date.now() };
-  runs.set(key, r);
+  const base = (await git(user, dir, "rev-parse", "HEAD")).out.trim();
+  const r = { controller, clients: new Set(), events: [], startedAt: Date.now(), mode: mode === "ask" ? "ask" : "auto", pending: new Map(), base };
+  runs.set(key, r); runBase.set(key, base);
   const uroot = userRoot(user);
+  broadcast(r, { type: "start", base, mode: r.mode });
 
   (async () => {
     try {
@@ -154,7 +165,8 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey }
           settingSources: [],         // ignore any ~/.claude settings on the server
           includePartialMessages: true,
           abortController: controller,
-          env: { ...gitEnv(user), ANTHROPIC_API_KEY: apiKey, CLAUDE_CONFIG_DIR: path.join(uroot, ".claude") },
+          // DEV_USE_LOCAL_LOGIN=1 lets a developer test on their own machine with their Claude Code login instead of a key.
+          env: process.env.DEV_USE_LOCAL_LOGIN === "1" ? { ...process.env, ...gitEnv(user) } : { ...gitEnv(user), ANTHROPIC_API_KEY: apiKey, CLAUDE_CONFIG_DIR: path.join(uroot, ".claude") },
           systemPrompt: {
             type: "preset", preset: "claude_code",
             append: `You are working inside the git repository ${slug} for GitHub user ${user.login}, already cloned at ${dir}. Stay inside this directory. The user talks to you from a web UI and cannot see your tool calls, only your final message, so finish with a short summary of what you changed. Git is authenticated as the user: commit and push with ordinary git commands when asked, with clear commit messages. Never force-push, never rewrite published history, never delete branches, and never print environment variables or tokens.`,
@@ -168,6 +180,16 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey }
               if (cmd.includes(WORKSPACE) && !cmd.includes(uroot)) return deny("Blocked: other users' workspaces are off limits.");
             }
             for (const k of ["file_path", "notebook_path", "path"]) if (input[k] != null && !insideDir(input[k], dir)) return deny(`Blocked: ${input[k]} is outside the repository.`);
+            if (r.mode === "ask" && !READ_ONLY.has(toolName)) {
+              const id = crypto.randomUUID();
+              const answer = await new Promise((resolve) => {
+                const t = setTimeout(() => { r.pending.delete(id); resolve({ allow: false, reason: "No answer within 10 minutes." }); }, 10 * 60 * 1000);
+                r.pending.set(id, (a) => { clearTimeout(t); r.pending.delete(id); resolve(a); });
+                broadcast(r, { type: "permission", id, tool: toolName, summary: summarizeTool(toolName, input).split(dir + path.sep).join(""), input: toolName === "Edit" || toolName === "Write" ? { ...input, file_path: String(input.file_path || "").split(dir + path.sep).join("") } : undefined });
+              });
+              broadcast(r, { type: "permission_result", id, allow: answer.allow });
+              if (!answer.allow) return deny(answer.reason || "The user declined this action.");
+            }
             return { behavior: "allow", updatedInput: input };
           },
         },
@@ -182,7 +204,14 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey }
           else if (e.type === "content_block_delta" && e.delta?.type === "thinking_delta" && e.delta.thinking) broadcast(r, { type: "thinking", delta: e.delta.thinking });
           else if (e.type === "message_stop") { if (textBuf) broadcast(r, { type: "text_end" }); textBuf = ""; }
         } else if (m.type === "assistant") {
-          for (const b of m.message.content || []) if (b.type === "tool_use") broadcast(r, { type: "tool_use", id: b.id, name: b.name, summary: summarizeTool(b.name, b.input), input: b.name === "Edit" || b.name === "Write" ? b.input : undefined, parent: m.parent_tool_use_id });
+          for (const b of m.message.content || []) if (b.type === "tool_use") {
+            const ev = { type: "tool_use", id: b.id, name: b.name, summary: summarizeTool(b.name, b.input).split(dir + path.sep).join(""), parent: m.parent_tool_use_id };
+            if (b.name === "Edit" || b.name === "MultiEdit") ev.input = b.input;
+            else if (b.name === "Write") { ev.input = b.input; try { const fp = path.resolve(dir, String(b.input.file_path || "")); if (insideDir(fp, dir) && fs.existsSync(fp) && fs.statSync(fp).size < 200_000) ev.previous = fs.readFileSync(fp, "utf8"); } catch {} }
+            else if (b.name === "TodoWrite") ev.todos = b.input?.todos;
+            else if (b.name === "Task") ev.input = { description: b.input?.description, subagent_type: b.input?.subagent_type };
+            broadcast(r, ev);
+          }
         } else if (m.type === "user") {
           for (const b of (Array.isArray(m.message.content) ? m.message.content : [])) if (b.type === "tool_result") { const t = textOf(b.content); broadcast(r, { type: "tool_result", id: b.tool_use_id, is_error: !!b.is_error, output: t.length > 4000 ? t.slice(0, 4000) + `\n… (${t.length - 4000} more chars)` : t }); }
         } else if (m.type === "result") {
@@ -193,6 +222,8 @@ async function startRun(user, slug, { prompt, sessionId, model, effort, apiKey }
       broadcast(r, { type: "error", message: controller.signal.aborted ? "Stopped." : String(e?.message || e) });
     } finally {
       runs.delete(key);
+      for (const resolve of r.pending.values()) resolve({ allow: false, reason: "Run ended." });
+      try { broadcast(r, { type: "changes", base, ...(await changesSince(user, dir, base)) }); } catch {}
       broadcast(r, { type: "done", repo: await repoInfo(user, slug).catch(() => null) });
       for (const c of r.clients) c.end();
       lastRuns.set(key, r.events);
@@ -290,6 +321,12 @@ http.createServer(async (req, res) => {
         req.on("close", () => { clearInterval(ping); r.clients.delete(res); });
         return;
       }
+      if (p === "/api/run/permission" && req.method === "POST") {
+        const { repo, id, allow, allowAll } = await readBody(req); const r = runs.get(runKey(user, repo)); if (!r) return json(res, 404, { error: "No run in progress" });
+        if (allowAll) r.mode = "auto";
+        const resolve = r.pending.get(id); if (!resolve) return json(res, 404, { error: "Nothing to approve" });
+        resolve({ allow: !!allow, reason: allow ? "" : "The user declined this action." }); return json(res, 200, { ok: true });
+      }
       if (p === "/api/run/stop" && req.method === "POST") {
         const { repo } = await readBody(req); const r = runs.get(runKey(user, repo)); if (!r) return json(res, 200, { ok: true, wasRunning: false });
         r.controller.abort(); return json(res, 200, { ok: true, wasRunning: true });
@@ -297,12 +334,17 @@ http.createServer(async (req, res) => {
 
       if (p === "/api/git/diff" && req.method === "GET") {
         const slug = url.searchParams.get("repo"); const dir = safeRepo(user, slug); if (!dir) return json(res, 404, { error: "Unknown repo" });
-        const [status, log, full] = await Promise.all([git(user, dir, "status", "--porcelain=v1", "--untracked-files=all"), git(user, dir, "log", "--oneline", "-8", "--decorate"), git(user, dir, "diff", "HEAD")]);
+        // scope=run → everything since the last run's starting commit (committed + uncommitted); scope=uncommitted → vs HEAD
+        const scope = url.searchParams.get("scope") || "uncommitted";
+        let base = "HEAD";
+        if (scope === "run") { const b = runBase.get(runKey(user, slug)); if (b && (await git(user, dir, "cat-file", "-e", b)).code === 0) base = b; }
+        const [status, log, full] = await Promise.all([git(user, dir, "status", "--porcelain=v1", "--untracked-files=all"), git(user, dir, "log", "--oneline", "-10", "--decorate"), git(user, dir, "diff", base)]);
         const untracked = status.out.split("\n").filter((l) => l.startsWith("??")).map((l) => l.slice(3));
         let extra = "";
-        for (const f of untracked.slice(0, 20)) { try { const fp = path.join(dir, f); if (fs.statSync(fp).size < 200_000) extra += `\ndiff --git a/${f} b/${f}\n--- /dev/null\n+++ b/${f}\n` + fs.readFileSync(fp, "utf8").split("\n").map((l) => "+" + l).join("\n") + "\n"; } catch {} }
+        for (const f of untracked.slice(0, 30)) { try { const fp = path.join(dir, f); if (fs.statSync(fp).size < 200_000) extra += `\ndiff --git a/${f} b/${f}\nnew file mode 100644\n--- /dev/null\n+++ b/${f}\n` + fs.readFileSync(fp, "utf8").split("\n").map((l) => "+" + l).join("\n") + "\n"; } catch {} }
         const text = full.out + extra;
-        return json(res, 200, { status: status.out, log: log.out, diff: text.length > 300_000 ? text.slice(0, 300_000) + "\n… diff truncated" : text, info: await repoInfo(user, slug) });
+        const summary = await changesSince(user, dir, base);
+        return json(res, 200, { scope, base: base === "HEAD" ? null : base, status: status.out, log: log.out, diff: text.length > 400_000 ? text.slice(0, 400_000) + "\n… diff truncated" : text, files: summary.files, commits: summary.commits, info: await repoInfo(user, slug) });
       }
       if (p === "/api/git" && req.method === "POST") {
         const { repo, action, message } = await readBody(req); const dir = safeRepo(user, repo); if (!dir) return json(res, 404, { error: "Unknown repo" });

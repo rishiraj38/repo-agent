@@ -52,6 +52,15 @@ Paid anywhere: attach a disk at `/data` (the Dockerfile uses `/data/workspaces`)
 3. Type a repo (the box suggests your GitHub repos) and press +.
 4. Chat. Every tool call shows as a card; the Changes panel shows the diff with Commit, Push, Pull and Discard buttons. Or just tell the agent to commit and push.
 
+## What you see while it works
+
+- Every tool call is a card: Bash with its output, Read, Grep, Glob, web fetches, and subagent (Task) calls with their own nested cards.
+- **Edit and Write show real diffs** inline, with +/− counts, as soon as the agent makes them.
+- A **Plan** card tracks the agent's todo list as it checks items off.
+- **Permissions**: pick "ask before commands & edits" in the composer and every command, edit and write pauses with Allow / Allow all this run / Deny, like Claude Code's prompts. "auto-approve" runs without asking (the safety policy still applies).
+- At the end of a run: a summary of files changed with +/− counts and any commits the agent made, plus turns, time and estimated cost. The top bar keeps a running session total.
+- The **Changes** panel has two views. *This run* shows everything since the run started, including commits the agent made, so nothing disappears when the agent commits. *Uncommitted* shows the working tree against HEAD. Both render per-file collapsible diffs; click a file in the run summary to jump to it.
+
 ## Env vars
 
 | Var | Required | What |
