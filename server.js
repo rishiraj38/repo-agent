@@ -46,9 +46,16 @@ function setCookie(res, name, value, opts = {}) {
   res.setHeader("set-cookie", [...(res.getHeader("set-cookie") || []), parts.join("; ")]);
 }
 const isSecure = (req) => String(req.headers["x-forwarded-proto"] || "").startsWith("https") || !!req.socket.encrypted;
-function userFrom(req) {
+async function userFrom(req, res) {
   const u = unseal(cookies(req).ra_session || ""); if (!u || !u.id || !u.token) return null;
   if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(u.login.toLowerCase())) return null;
+  if (u.exp && u.refresh && Date.now() > u.exp - 10 * 60 * 1000) {
+    try {
+      const tr = await fetch("https://github.com/login/oauth/access_token", { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: JSON.stringify({ client_id: GH_CLIENT_ID, client_secret: GH_CLIENT_SECRET, grant_type: "refresh_token", refresh_token: u.refresh }) }).then((r) => r.json());
+      if (tr.access_token) { Object.assign(u, { token: tr.access_token, refresh: tr.refresh_token || u.refresh, exp: tr.expires_in ? Date.now() + tr.expires_in * 1000 : 0 }); if (res) setCookie(res, "ra_session", seal(u), { secure: isSecure(req) }); }
+      else if (Date.now() > u.exp) return null;
+    } catch { if (Date.now() > u.exp) return null; }
+  }
   return u;
 }
 
@@ -228,7 +235,7 @@ http.createServer(async (req, res) => {
       let email = me.email;
       if (!email) { try { const emails = await gh(tr.access_token, "https://api.github.com/user/emails"); email = (emails.find((e) => e.primary) || emails[0])?.email; } catch {} }
       if (ALLOWED_USERS.length && !ALLOWED_USERS.includes(me.login.toLowerCase())) { res.writeHead(403); return res.end(`@${me.login} is not on this server's allow list.`); }
-      setCookie(res, "ra_session", seal({ id: String(me.id), login: me.login, name: me.name || "", email: email || "", avatar: me.avatar_url, token: tr.access_token }), { secure: isSecure(req) });
+      setCookie(res, "ra_session", seal({ id: String(me.id), login: me.login, name: me.name || "", email: email || "", avatar: me.avatar_url, token: tr.access_token, refresh: tr.refresh_token || "", exp: tr.expires_in ? Date.now() + tr.expires_in * 1000 : 0 }), { secure: isSecure(req) });
       setCookie(res, "ra_state", "", { maxAge: 0 });
       res.writeHead(302, { location: "/" }); return res.end();
     }
@@ -237,8 +244,8 @@ http.createServer(async (req, res) => {
     if (p === "/api/config") return json(res, 200, { oauth: !!GH_CLIENT_ID, model: DEFAULT_MODEL, allowList: ALLOWED_USERS.length > 0 });
 
     if (p.startsWith("/api/")) {
-      const user = userFrom(req);
-      if (!user) return json(res, 401, { error: "Sign in with GitHub first" });
+      const user = await userFrom(req, res);
+      if (!user) { setCookie(res, "ra_session", "", { maxAge: 0 }); return json(res, 401, { error: "Sign in with GitHub first" }); }
       if (p === "/api/me") return json(res, 200, { id: user.id, login: user.login, name: user.name, avatar: user.avatar });
 
       if (p === "/api/github/repos") {
