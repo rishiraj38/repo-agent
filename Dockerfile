@@ -5,5 +5,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
 ENV NODE_ENV=production WORKSPACE_DIR=/data/workspaces PORT=3000
+RUN mkdir -p /data/workspaces
 EXPOSE 3000
 CMD ["node", "server.js"]
