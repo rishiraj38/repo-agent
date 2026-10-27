@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: repo-agent
+    runtime: docker
+    plan: starter
+    disk:
+      name: workspaces
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: GIT_AUTHOR_NAME
+        sync: false
+      - key: GIT_AUTHOR_EMAIL
+        sync: false
