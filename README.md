@@ -1,3 +1,13 @@
+---
+title: Repo Agent
+emoji: 🛠️
+colorFrom: red
+colorTo: yellow
+sdk: docker
+app_port: 3000
+pinned: false
+---
+
 # Repo Agent
 
 A Claude Code-style coding agent for GitHub repositories that anyone can use: sign in with GitHub, paste your Anthropic API key, pick a repo, and tell the agent what to do. It reads the code, edits files, runs commands and tests, and commits and pushes as you. Built on the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk), the same harness Claude Code runs on, so it has the same tools.
@@ -30,7 +40,7 @@ It needs a server that can run git and shell commands, so GitHub Pages and other
 | Host | How |
 |------|-----|
 | **Render (free)** | New → Blueprint → this repo. `render.yaml` uses the free plan: no disk, so cloned repos disappear when the service restarts or sleeps after 15 minutes idle. Users just add the repo again. |
-| **Hugging Face Spaces (free, Docker)** | New Space → Docker → push this repo. Add the env vars as Space secrets and set `app_port: 3000` in the Space README front matter. More RAM than Render free. |
+| **Hugging Face Spaces (free, no card)** | Create a Space → Docker → push this repo to it (the README front matter is already set up). Add `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `SESSION_SECRET` under Settings → Variables and secrets. The app URL is `https://<user>-<space>.hf.space`. Free CPU Spaces sleep after 48 h idle and have no persistent disk, so repos re-clone after a restart. |
 | **Google Cloud Run** | `gcloud run deploy --source .` with the env vars. Generous free tier, scales to zero. |
 
 Paid anywhere: attach a disk at `/data` (the Dockerfile uses `/data/workspaces`) and repos persist.
